@@ -11,7 +11,7 @@
     "build": "pnpm -r build",
     "lint": "eslint . --max-warnings 0",
     "typecheck": "tsc -p tsconfig.check.json --noEmit && pnpm -r typecheck",
-    "test": "tsx --test tests/api.test.ts",
+    "test": "tsx --test tests/api.test.ts tests/decimal.test.ts",
     "test:db": "tsx --test tests/db.test.ts",
     "test:runtime": "tsx --test tests/runtime.test.ts",
     "test:e2e": "playwright test",

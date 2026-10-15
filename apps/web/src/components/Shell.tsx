@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
+import { Button, Dialog, containDialogTab } from "@business/ui";
+import { usePreview } from "../preview/PreviewProvider";
+import { CommandPalette } from "./CommandPalette";
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
 const navigation = [
@@ -16,11 +19,37 @@ const navigation = [
 ];
 export function Shell({ children }: { children: ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
+  const [commandsOpen, setCommandsOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const preview = usePreview();
+  const navigate = useNavigate();
   const drawer = useRef<HTMLDialogElement>(null);
   const location = useLocation();
   useEffect(() => {
     drawer.current?.close();
-  }, [location.pathname]);
+    window.scrollTo(0, 0);
+    document
+      .getElementById(
+        location.pathname === "/sales/new" ? "item-search" : "main",
+      )
+      ?.focus({ preventScroll: true });
+  }, [location.pathname, preview.sample]);
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if (
+        (event.ctrlKey || event.metaKey) &&
+        event.key.toLowerCase() === "k" &&
+        !event.altKey
+      ) {
+        // Do not open another modal over a receipt or confirmation dialog.
+        if (document.querySelector("dialog[open]")) return;
+        event.preventDefault();
+        setCommandsOpen(true);
+      }
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
   return (
     <div className={"app-shell " + (collapsed ? "is-collapsed" : "")}>
       <a className="skip-link" href="#main">
@@ -37,6 +66,8 @@ export function Shell({ children }: { children: ReactNode }) {
         </button>
       </aside>
       <dialog
+        aria-label="Navigation"
+        onKeyDown={containDialogTab}
         ref={drawer}
         className="navigation-dialog"
         onClick={(e) => {
@@ -53,14 +84,57 @@ export function Shell({ children }: { children: ReactNode }) {
         <Sidebar navigation={navigation} />
       </dialog>
       <div className="app-content">
-        <Header onMenuClick={() => drawer.current?.showModal()} />
+        <Header
+          onMenuClick={() => drawer.current?.showModal()}
+          onCommands={() => setCommandsOpen(true)}
+          onHelp={() => setHelpOpen(true)}
+        />
+        {preview.sample && (
+          <div className="sample-strip" role="status">
+            <span>
+              <span className="status-dot" />
+              Sample data — changes reset
+            </span>
+            <Button
+              onClick={() => {
+                preview.exit();
+                navigate("/home");
+              }}
+            >
+              Exit sample workspace <span aria-hidden="true">↗</span>
+            </Button>
+          </div>
+        )}
         <main id="main" tabIndex={-1}>
           {children}
         </main>
-        <footer>
-          Business Management Software · Foundation preview · PKR / Asia/Karachi
-        </footer>
       </div>
+      {commandsOpen && (
+        <CommandPalette
+          routes={navigation}
+          onClose={() => setCommandsOpen(false)}
+        />
+      )}
+      {helpOpen && (
+        <Dialog title="About this preview" onClose={() => setHelpOpen(false)}>
+          <p>
+            Explore navigation and page layouts, or try a sample workspace with
+            searchable transactions, items and an editable sale cart.
+          </p>
+          <p>
+            Sample data stays in memory. Changes reset when you exit or reload.
+            Sample receipts are previews, never saved or issued.
+          </p>
+          <p>
+            Business login, invoice posting, payments and offline sync are not
+            available yet.
+          </p>
+          <p className="dialog-hint">
+            Use Ctrl K (⌘ K on Mac) to find pages and actions.
+          </p>
+          <Button onClick={() => setHelpOpen(false)}>Got it</Button>
+        </Dialog>
+      )}
     </div>
   );
 }

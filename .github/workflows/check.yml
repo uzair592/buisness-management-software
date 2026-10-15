@@ -36,4 +36,4 @@ jobs:
         if: always()
         with:
           name: foundation-browser-evidence
-          path: docs/evidence/m01/*.png
+          path: docs/evidence/**/*.png

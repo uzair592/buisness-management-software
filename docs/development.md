@@ -2,7 +2,9 @@
 
 M01 provides a UI prototype and health API only. Login, business data, billing,
 IndexedDB, offline issue and sync are not implemented. No seeded business or demo
-account is created. Unavailable figures use a dash, never synthetic totals.
+account is created. Operational figures use a dash. An explicit, isolated
+[sample workspace](m01-ui-refinement.md) provides fictional records for exploring
+the UI; its changes reset on exit or reload.
 
 ## Fresh checkout
 
@@ -60,6 +62,7 @@ details. Neither endpoint contains business information.
 | `packages/ui` | Form fields, buttons, semantic tables, badges and panels |
 | `packages/contracts` | Shared Zod response schemas and inferred types |
 | `packages/db` | Prisma client factory and reviewed schema source |
+| `packages/domain` | Exact decimal amount and quantity helpers used by the sample UI |
 | `tests` | API smoke, real PostgreSQL readiness, responsive browser checks |
 
 React 19, Vite 7 and Fastify 5 run on the supported Node LTS baseline. Tailwind 3.4
@@ -68,8 +71,9 @@ generated client/datasource URL interface without introducing an adapter change
 in this foundation. [Prisma 6 security support](https://www.prisma.io/docs/orm/release-status)
 ends on 19 November 2026; upgrade the foundation to Prisma 7 before introducing
 the M02 identity schema, or earlier if that date is reached. pnpm locks resolved
-versions in a single lockfile. No domain
-math package or worker is created until it has real responsibility.
+versions in a single lockfile. The domain package contains narrow exact amount
+helpers; the production tax/discount/posting engine remains M03. No empty worker
+is created.
 
 References: [Node release schedule](https://github.com/nodejs/Release#release-schedule),
 [Vite requirements](https://vite.dev/guide/), and
@@ -102,5 +106,8 @@ authentication, HTTPS and service workers remain outside this milestone.
 `pnpm test:e2e` uses the production web build and navigates every area at 1366×768, 1920×1080 and 390×844,
 checks horizontal overflow, disabled issue, item-search entry focus, desktop
 collapse, and mobile dialog Escape/focus restoration. Screenshots go to
-`docs/evidence/m01`. The native modal dialog traps focus and makes the background
-inert. No hardware printing or installability claim is made.
+`docs/evidence/m01-ui-refinement`; original M01 screenshots are preserved under
+`docs/evidence/m01`. Tests also cover sample entry/exit and isolation, dashboard
+filters, directories, cart totals, receipt and confirmation dialogs, and command
+navigation. Native modal dialogs contain focus and restore their opener. No
+hardware printing or installability claim is made.

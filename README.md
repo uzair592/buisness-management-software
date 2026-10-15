@@ -2,7 +2,7 @@
 
 A proposed business-management product inspired by Vyapar's ease of use: fast billing, connected inventory and accounts, genuine offline sales, and shared access across devices.
 
-**Current status: M01 foundation implemented; review pending.** The repository includes a responsive UI shell, pnpm workspace and a PostgreSQL health API. Login, billing, offline transactions and deployment remain unimplemented. See [PROJECT_STATUS.md](PROJECT_STATUS.md) for acceptance evidence. Product name and additional custom features are still open.
+**Current status: M01 foundation merged; UI refinement implemented for review.** The repository includes a responsive UI shell, pnpm workspace and a PostgreSQL health API. An explicit [sample workspace](docs/m01-ui-refinement.md) lets you explore the interface without creating business records. Login, operational billing, offline transactions and deployment remain unimplemented. See [PROJECT_STATUS.md](PROJECT_STATUS.md) for acceptance evidence. Product name and additional custom features are still open.
 
 ## Start here
 

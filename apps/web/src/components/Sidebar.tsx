@@ -36,13 +36,8 @@ export function Sidebar({
         ))}
       </nav>
       <div className="sidebar-note nav-label">
-        Foundation preview
-        <br />
-        <span>
-          Explore the workspace.
-          <br />
-          Business records come next.
-        </span>
+        <span className="status-dot" /> PKR{" "}
+        <span className="muted">· Asia/Karachi</span>
       </div>
     </>
   );

@@ -60,6 +60,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@business/domain':
+        specifier: workspace:*
+        version: link:../../packages/domain
       '@business/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -110,6 +113,8 @@ importers:
       prisma:
         specifier: ^6.19.0
         version: 6.19.3(typescript@5.9.3)
+
+  packages/domain: {}
 
   packages/ui:
     dependencies:

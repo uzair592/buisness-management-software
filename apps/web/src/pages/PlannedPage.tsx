@@ -1,32 +1,31 @@
 import { Link } from "react-router-dom";
-import { Badge, Panel, EmptyState } from "@business/ui";
+import { Panel, EmptyState } from "@business/ui";
 export function PlannedPage({
   title,
   description,
-  milestone,
 }: {
   title: string;
   description: string;
-  milestone: string;
 }) {
   return (
     <>
       <div className="page-heading">
         <div>
-          <p className="eyebrow">WORKSPACE PREVIEW</p>
+          <p className="eyebrow">WORKSPACE</p>
           <h1>{title}</h1>
           <p>{description}</p>
         </div>
-        <Badge>Planned · {milestone}</Badge>
       </div>
       <Panel>
         <EmptyState title="Not yet available">
-          This workspace has no connected business data or working business
-          actions. Follow the milestone roadmap for implementation.
+          This area is still being built. Explore Home, the directories and New
+          Sale in the sample workspace.
         </EmptyState>
-        <Link to="/home" className="btn-secondary">
-          Back to Home
-        </Link>
+        <div className="empty-actions">
+          <Link className="btn-secondary" to="/home">
+            Back to Home
+          </Link>
+        </div>
       </Panel>
     </>
   );
