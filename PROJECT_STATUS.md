@@ -6,7 +6,7 @@ Last planning update: 2026-10-15.
 | --- | --- | --- |
 | M00 Product plan and diagrams | Complete | Planning documents, 30 Mermaid sources and staged agent prompts in this repository |
 | M01 Foundation | Complete; PR #1 merged | Workspace, responsive shell, PostgreSQL readiness and [M01 evidence](docs/evidence/m01/README.md); UI prototype gate only |
-| M01 UI refinement | Implemented; CI repair revalidation pending | [Screenshots and original checks](docs/evidence/m01-ui-refinement/README.md); [filter-race repair evidence](docs/evidence/m01-ui-refinement/ci-filter-fix.md); isolated sample interactions only |
+| M01 UI refinement | Validated; PR #2 review pending | [Screenshots and original checks](docs/evidence/m01-ui-refinement/README.md); [filter-race repair and passing CI](docs/evidence/m01-ui-refinement/ci-filter-fix.md); isolated sample interactions only |
 | M02 Identity and devices | Not started | — |
 | M03 Domain and journal | Not started | — |
 | M04 Catalogue and opening balances | Not started | — |
@@ -49,7 +49,7 @@ Review and merge the M01 UI refinement PR before starting [Milestone 02](prompts
 - Reviewed commit `2c7f30181ab1c88867a17ba6ee5bb37f1befe485` failed [CI](https://github.com/uzair592/buisness-management-software/actions/runs/38764566377): 6 browser tests passed; the 390×844 sample journey timed out opening S-1045. Install, check, database and runtime stages passed. Earlier local results above are historical, not evidence of CI acceptance.
 - Confirmed a stale URL snapshot race with consecutive native filter events in the real production preview. Date/search/status handlers now compose with current browser history. Original ordinary mobile journey and all 3 new filter regression tests pass; reset, details, focus and Back/Forward preserve the intended filters.
 - Local validation: `pnpm check` passed (lint/typechecks/builds/4 tests); `pnpm test:e2e` passed **10 tests** across all three target viewports. `pnpm test:db` passed 1 real PostgreSQL test. `pnpm test:runtime` initially returned readiness 503 during concurrent checks and passed 1 test on rerun; precise cause unconfirmed. [Full diagnostics and screenshots](docs/evidence/m01-ui-refinement/ci-filter-fix.md).
-- CI now retains failure traces/screenshots, HTML reports and attached browser state/accessibility/console diagnostics. Remote repair validation is pending; this does not yet claim the failed CI gate repaired remotely.
+- Repair commit: `33eb6cd96be94efa7647b0648af21da6a0ef8c8e`. Both the [PR run](https://github.com/uzair592/buisness-management-software/actions/runs/38770301679) and [push run](https://github.com/uzair592/buisness-management-software/actions/runs/38770294122) completed successfully. Install, Prisma generation, `pnpm check`, real PostgreSQL database/runtime checks and **10 browser tests** passed on Linux. The expanded evidence artifact uploaded successfully; CI now retains failure traces/screenshots, HTML reports and attached browser state/accessibility/console diagnostics. Final documentation follow-up checks are reported on PR #2.
 - Same branch and PR #2; no migration, API, storage or future-milestone implementation. M02 remains eligible only after refinement review and merge.
 
 ## M00 validation

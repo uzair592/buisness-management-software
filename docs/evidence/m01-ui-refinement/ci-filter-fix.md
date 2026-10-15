@@ -83,15 +83,26 @@ Windows, Node 22.20.0, pnpm 10.28.2; real Vite production preview and Chromium:
 | `pnpm test:e2e` | **10 passed (3.4m)**; all three viewports, original 7 tests plus 3 filter regressions |
 | `pnpm test:db` | 1 passed against native PostgreSQL 17.7 |
 | `pnpm test:runtime` | Initial concurrent run failed readiness (503); rerun after browsers finished: **1 passed** |
+| `git diff --check` / `git diff --cached --check` | Passed before committing the repair |
+| Relative documentation links in status and refinement evidence | 35 checked; none missing |
 
 The local runtime 503's precise cause was not established. The server has short
 connection/pool timeouts; host contention is a possibility, not a verified cause.
 No API/database code or timeouts were changed to suppress it. Database checks
 used `postgresql://bms_local@127.0.0.1:55432/postgres?connect_timeout=2`.
 
-Remote validation of the pushed repair is pending. The historical local pass
-did not imply CI success; the failed reviewed-commit run is explicitly retained
-above. PR #2 remains the review unit.
+Repair commit: `33eb6cd96be94efa7647b0648af21da6a0ef8c8e`.
+Both [PR Actions](https://github.com/uzair592/buisness-management-software/actions/runs/38770301679)
+and [push Actions](https://github.com/uzair592/buisness-management-software/actions/runs/38770294122)
+completed **successfully** on 15 October 2026. Install, Prisma generation,
+`pnpm check` (including 4 tests), real PostgreSQL database/runtime checks
+(1 test each), and **10 browser tests** passed on Linux.
+The [expanded browser artifact](https://github.com/uzair592/buisness-management-software/actions/runs/38770301679/artifacts/11992180205)
+uploaded successfully with the HTML report, test results and screenshots.
+Passing runs discard traces by design; future failures retain their traces
+and attached diagnostics. The historical failed run remains documented above.
+PR #2 remains the review unit; its final documentation-follow-up checks are
+reported on the PR rather than recursively generating evidence commits.
 
 ## Scope
 
