@@ -5,7 +5,7 @@ Last planning update: 2026-10-15.
 | Milestone | Status | Evidence |
 | --- | --- | --- |
 | M00 Product plan and diagrams | Complete | Planning documents, 30 Mermaid sources and staged agent prompts in this repository |
-| M01 Foundation | Not started | No application code |
+| M01 Foundation | Complete; review pending | Workspace, responsive shell, PostgreSQL readiness and [M01 evidence](docs/evidence/m01/README.md); UI prototype gate only |
 | M02 Identity and devices | Not started | — |
 | M03 Domain and journal | Not started | — |
 | M04 Catalogue and opening balances | Not started | — |
@@ -22,7 +22,17 @@ Last planning update: 2026-10-15.
 
 ## Next action
 
-Run [Milestone 01](prompts/01-foundation.md) together with the [agent contract](prompts/00-agent-contract.md). This establishes the repo and UI shell; it does not complete billing or offline mode.
+Review and merge the M01 PR before starting [Milestone 02](prompts/02-identity-and-devices.md) with the [agent contract](prompts/00-agent-contract.md). Upgrade Prisma 6 to Prisma 7 before introducing the identity schema; Prisma 6 security support ends 19 November 2026. M01 completes only the UI prototype gate, not billing, identity or offline mode.
+
+## M01 implementation and evidence
+
+- Branch: `milestone-01-foundation`, based on fetched `origin/main` at `db9f44a`. No open PR existed when work began; continued the existing uncommitted M01 scaffold and preserved its original contents outside the repository.
+- PR: [#1 — M01 foundation](https://github.com/uzair592/buisness-management-software/pull/1). Tested implementation commit: `36026ece44b105851d594fbbd7f17575aba9519c`; the follow-up documentation commit records this review link.
+- Implemented: pnpm TypeScript workspace, React/Tailwind shell and New Sale layout, shared UI/contracts/db packages, Fastify health API, env validation, local PostgreSQL Compose setup and CI. No business data, sample totals, login, invoice issue, browser database or sync is presented as working.
+- Validation: fresh staged-tree checkout `pnpm install --frozen-lockfile --prefer-offline` and `pnpm db:generate` passed. `pnpm check` passed lint, typecheck, API/web production builds and 2 API/config smoke tests. Real PostgreSQL readiness/recovery and compiled HTTP API startup passed separately. Browser checks passed at all three required viewports; see [exact commands and screenshots](docs/evidence/m01/README.md).
+- Migration/recovery: no business tables or SQL migrations, no browser DB/outbox. Application rollback requires no data reset. Compose uses a persistent volume; preserve it when stopping/reverting.
+- Environment limitation: Docker Linux engine unavailable on this Windows host. Compose configuration validation passed; DB behaviour was tested against a real temporary native PostgreSQL 17.7 instance. Container startup remains unverified locally and is configured in CI.
+- Release gate: UI prototype only. No hardware, PWA installation, financial integrity, tenant isolation, offline or multi-device acceptance claim. Prisma support deadline and later feature gates remain explicit.
 
 ## M00 validation
 

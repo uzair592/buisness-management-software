@@ -1,6 +1,6 @@
 # Project map
 
-This package defines the intended product and how an agent should build it in reviewable steps. **Only M00 is complete.**
+This package defines the intended product and how an agent should build it in reviewable steps. [Project status](../PROJECT_STATUS.md) records implemented milestones; [development setup](development.md) explains the M01 workspace.
 
 | Document | Decision it supports |
 | --- | --- |

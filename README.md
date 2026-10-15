@@ -2,7 +2,7 @@
 
 A proposed business-management product inspired by Vyapar's ease of use: fast billing, connected inventory and accounts, genuine offline sales, and shared access across devices.
 
-**Current status: planning only. No application, database, login, offline engine, or deployment has been implemented.** This repository was empty when inspected on 15 October 2026. Product name and additional custom features are still open.
+**Current status: M01 foundation implemented; review pending.** The repository includes a responsive UI shell, pnpm workspace and a PostgreSQL health API. Login, billing, offline transactions and deployment remain unimplemented. See [PROJECT_STATUS.md](PROJECT_STATUS.md) for acceptance evidence. Product name and additional custom features are still open.
 
 ## Start here
 
@@ -41,3 +41,7 @@ These are planning assumptions, not a claim that every requirement has been appr
 - [Reference research](docs/planning/14-reference-research.md)
 
 No delivery dates or hosting prices are promised at this stage. Estimates should follow a measured vertical slice, especially the two-device offline proof.
+
+## Run the foundation preview
+
+See [development setup and validation](docs/development.md) for the pnpm workspace, local PostgreSQL, health API, and UI preview. M01 does not implement business transactions.

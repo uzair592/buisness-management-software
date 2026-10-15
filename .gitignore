@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+*.tsbuildinfo
+playwright-report/
+test-results/
+# Existing local Continuity state
+SESSION_HANDOFF.md
+.continuity/*
+!.continuity/decisions.jsonl
+!.continuity/decisions.json
+!.continuity/.gitattributes
+!.continuity/SESSION_NOTES.md
+!.continuity/INSTRUCTIONS.md
