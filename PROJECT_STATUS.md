@@ -27,7 +27,7 @@ Review and merge the M01 PR before starting [Milestone 02](prompts/02-identity-a
 ## M01 implementation and evidence
 
 - Branch: `milestone-01-foundation`, based on fetched `origin/main` at `db9f44a`. No open PR existed when work began; continued the existing uncommitted M01 scaffold and preserved its original contents outside the repository.
-- PR and implementation commit: recorded after push in this section.
+- PR: [#1 — M01 foundation](https://github.com/uzair592/buisness-management-software/pull/1). Tested implementation commit: `36026ece44b105851d594fbbd7f17575aba9519c`; the follow-up documentation commit records this review link.
 - Implemented: pnpm TypeScript workspace, React/Tailwind shell and New Sale layout, shared UI/contracts/db packages, Fastify health API, env validation, local PostgreSQL Compose setup and CI. No business data, sample totals, login, invoice issue, browser database or sync is presented as working.
 - Validation: fresh staged-tree checkout `pnpm install --frozen-lockfile --prefer-offline` and `pnpm db:generate` passed. `pnpm check` passed lint, typecheck, API/web production builds and 2 API/config smoke tests. Real PostgreSQL readiness/recovery and compiled HTTP API startup passed separately. Browser checks passed at all three required viewports; see [exact commands and screenshots](docs/evidence/m01/README.md).
 - Migration/recovery: no business tables or SQL migrations, no browser DB/outbox. Application rollback requires no data reset. Compose uses a persistent volume; preserve it when stopping/reverting.
