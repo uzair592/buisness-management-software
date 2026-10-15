@@ -5,7 +5,7 @@ export default defineConfig({
   platform: "node",
   target: "node22",
   noExternal: [/^@business\//],
-  external: ["@prisma/client"],
+  external: ["@prisma/client", "@prisma/adapter-pg", "pg"],
   splitting: false,
   clean: true,
 });

@@ -1,8 +1,10 @@
 generator client {
-  provider = "prisma-client-js"
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
 }
+
 datasource db {
   provider = "postgresql"
-  url = env("DATABASE_URL")
 }
+
 // Business tables and tenant constraints begin in M02. M01 changes no data.
