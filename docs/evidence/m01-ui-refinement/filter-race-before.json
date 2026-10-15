@@ -1,0 +1,1737 @@
+{
+  "url": "http://127.0.0.1:5173/home?period=day&q=&status=Due",
+  "parameters": {
+    "period": "day",
+    "q": "",
+    "status": "Due"
+  },
+  "controls": [
+    {
+      "label": "Date range",
+      "value": "day"
+    },
+    {
+      "label": "Search transactions",
+      "value": ""
+    },
+    {
+      "label": "Transaction status",
+      "value": "Due"
+    }
+  ],
+  "rows": [
+    "Bilal TradersSample S-1047Sale15 Oct 2026PKR 687.00Due",
+    "Bright SuppliesSample P-0216Purchase15 Oct 2026PKR 2,673.00Due"
+  ],
+  "focused": "<input class=\"input\" placeholder=\"Search name or reference…\" type=\"search\" value=\"\">",
+  "timeline": [
+    {
+      "event": "replaceState",
+      "url": "http://127.0.0.1:5173/?period=week&q=Bilal&status=Paid",
+      "controls": []
+    },
+    {
+      "event": "replaceState",
+      "url": "http://127.0.0.1:5173/home",
+      "controls": []
+    },
+    {
+      "event": "pushState",
+      "url": "http://127.0.0.1:5173/home",
+      "controls": []
+    },
+    {
+      "event": "input",
+      "url": "http://127.0.0.1:5173/home",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "week"
+        },
+        {
+          "label": "Search transactions",
+          "value": ""
+        },
+        {
+          "label": "Transaction status",
+          "value": "All"
+        }
+      ]
+    },
+    {
+      "event": "pushState",
+      "url": "http://127.0.0.1:5173/home?period=week",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "week"
+        },
+        {
+          "label": "Search transactions",
+          "value": ""
+        },
+        {
+          "label": "Transaction status",
+          "value": "All"
+        }
+      ]
+    },
+    {
+      "event": "change",
+      "url": "http://127.0.0.1:5173/home?period=week",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "day"
+        },
+        {
+          "label": "Search transactions",
+          "value": ""
+        },
+        {
+          "label": "Transaction status",
+          "value": "All"
+        }
+      ]
+    },
+    {
+      "event": "replaceState",
+      "url": "http://127.0.0.1:5173/home?period=week&q=Bilal",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "week"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Bilal"
+        },
+        {
+          "label": "Transaction status",
+          "value": "All"
+        }
+      ]
+    },
+    {
+      "event": "input",
+      "url": "http://127.0.0.1:5173/home?period=week&q=Bilal",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "week"
+        },
+        {
+          "label": "Search transactions",
+          "value": ""
+        },
+        {
+          "label": "Transaction status",
+          "value": "All"
+        }
+      ]
+    },
+    {
+      "event": "input",
+      "url": "http://127.0.0.1:5173/home?period=week&q=Bilal",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "week"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Bilal"
+        },
+        {
+          "label": "Transaction status",
+          "value": "Paid"
+        }
+      ]
+    },
+    {
+      "event": "replaceState",
+      "url": "http://127.0.0.1:5173/home?period=week&q=Bilal&status=Paid",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "week"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Bilal"
+        },
+        {
+          "label": "Transaction status",
+          "value": "Paid"
+        }
+      ]
+    },
+    {
+      "event": "change",
+      "url": "http://127.0.0.1:5173/home?period=week&q=Bilal&status=Paid",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "week"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Bilal"
+        },
+        {
+          "label": "Transaction status",
+          "value": "All"
+        }
+      ]
+    },
+    {
+      "event": "change",
+      "url": "http://127.0.0.1:5173/home?period=week&q=Bilal&status=Paid",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "week"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Bilal"
+        },
+        {
+          "label": "Transaction status",
+          "value": "Paid"
+        }
+      ]
+    },
+    {
+      "event": "pushState",
+      "url": "http://127.0.0.1:5173/home?period=all",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "week"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Bilal"
+        },
+        {
+          "label": "Transaction status",
+          "value": "Paid"
+        }
+      ]
+    },
+    {
+      "event": "replaceState",
+      "url": "http://127.0.0.1:5173/home?period=all&q=Ayesha",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "all"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Ayesha"
+        },
+        {
+          "label": "Transaction status",
+          "value": "All"
+        }
+      ]
+    },
+    {
+      "event": "input",
+      "url": "http://127.0.0.1:5173/home?period=all&q=Ayesha",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "all"
+        },
+        {
+          "label": "Search transactions",
+          "value": ""
+        },
+        {
+          "label": "Transaction status",
+          "value": "All"
+        }
+      ]
+    },
+    {
+      "event": "input",
+      "url": "http://127.0.0.1:5173/home?period=all&q=Ayesha",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "all"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Ayesha"
+        },
+        {
+          "label": "Transaction status",
+          "value": "Due"
+        }
+      ]
+    },
+    {
+      "event": "replaceState",
+      "url": "http://127.0.0.1:5173/home?period=all&q=Ayesha&status=Due",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "all"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Ayesha"
+        },
+        {
+          "label": "Transaction status",
+          "value": "Due"
+        }
+      ]
+    },
+    {
+      "event": "change",
+      "url": "http://127.0.0.1:5173/home?period=all&q=Ayesha&status=Due",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "all"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Ayesha"
+        },
+        {
+          "label": "Transaction status",
+          "value": "All"
+        }
+      ]
+    },
+    {
+      "event": "change",
+      "url": "http://127.0.0.1:5173/home?period=all&q=Ayesha&status=Due",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "all"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Ayesha"
+        },
+        {
+          "label": "Transaction status",
+          "value": "Due"
+        }
+      ]
+    },
+    {
+      "event": "input",
+      "url": "http://127.0.0.1:5173/home?period=all&q=Ayesha&status=Due",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "week"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Ayesha"
+        },
+        {
+          "label": "Transaction status",
+          "value": "Due"
+        }
+      ]
+    },
+    {
+      "event": "pushState",
+      "url": "http://127.0.0.1:5173/home?period=week&q=Ayesha&status=Due",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "week"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Ayesha"
+        },
+        {
+          "label": "Transaction status",
+          "value": "Due"
+        }
+      ]
+    },
+    {
+      "event": "change",
+      "url": "http://127.0.0.1:5173/home?period=week&q=Ayesha&status=Due",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "all"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Ayesha"
+        },
+        {
+          "label": "Transaction status",
+          "value": "Due"
+        }
+      ]
+    },
+    {
+      "event": "replaceState",
+      "url": "http://127.0.0.1:5173/home?period=week&q=Bilal&status=Due",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "week"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Bilal"
+        },
+        {
+          "label": "Transaction status",
+          "value": "Due"
+        }
+      ]
+    },
+    {
+      "event": "input",
+      "url": "http://127.0.0.1:5173/home?period=week&q=Bilal&status=Due",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "week"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Ayesha"
+        },
+        {
+          "label": "Transaction status",
+          "value": "Due"
+        }
+      ]
+    },
+    {
+      "event": "input",
+      "url": "http://127.0.0.1:5173/home?period=week&q=Bilal&status=Due",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "week"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Bilal"
+        },
+        {
+          "label": "Transaction status",
+          "value": "Paid"
+        }
+      ]
+    },
+    {
+      "event": "replaceState",
+      "url": "http://127.0.0.1:5173/home?period=week&q=Bilal&status=Paid",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "week"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Bilal"
+        },
+        {
+          "label": "Transaction status",
+          "value": "Paid"
+        }
+      ]
+    },
+    {
+      "event": "change",
+      "url": "http://127.0.0.1:5173/home?period=week&q=Bilal&status=Paid",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "week"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Bilal"
+        },
+        {
+          "label": "Transaction status",
+          "value": "Due"
+        }
+      ]
+    },
+    {
+      "event": "change",
+      "url": "http://127.0.0.1:5173/home?period=week&q=Bilal&status=Paid",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "week"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Bilal"
+        },
+        {
+          "label": "Transaction status",
+          "value": "Paid"
+        }
+      ]
+    },
+    {
+      "event": "pushState",
+      "url": "http://127.0.0.1:5173/home?period=all",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "week"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Bilal"
+        },
+        {
+          "label": "Transaction status",
+          "value": "Paid"
+        }
+      ]
+    },
+    {
+      "event": "replaceState",
+      "url": "http://127.0.0.1:5173/home?period=all&q=Ayesha",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "all"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Ayesha"
+        },
+        {
+          "label": "Transaction status",
+          "value": "All"
+        }
+      ]
+    },
+    {
+      "event": "input",
+      "url": "http://127.0.0.1:5173/home?period=all&q=Ayesha",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "all"
+        },
+        {
+          "label": "Search transactions",
+          "value": ""
+        },
+        {
+          "label": "Transaction status",
+          "value": "All"
+        }
+      ]
+    },
+    {
+      "event": "input",
+      "url": "http://127.0.0.1:5173/home?period=all&q=Ayesha",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "all"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Ayesha"
+        },
+        {
+          "label": "Transaction status",
+          "value": "Due"
+        }
+      ]
+    },
+    {
+      "event": "replaceState",
+      "url": "http://127.0.0.1:5173/home?period=all&q=Ayesha&status=Due",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "all"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Ayesha"
+        },
+        {
+          "label": "Transaction status",
+          "value": "Due"
+        }
+      ]
+    },
+    {
+      "event": "change",
+      "url": "http://127.0.0.1:5173/home?period=all&q=Ayesha&status=Due",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "all"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Ayesha"
+        },
+        {
+          "label": "Transaction status",
+          "value": "All"
+        }
+      ]
+    },
+    {
+      "event": "change",
+      "url": "http://127.0.0.1:5173/home?period=all&q=Ayesha&status=Due",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "all"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Ayesha"
+        },
+        {
+          "label": "Transaction status",
+          "value": "Due"
+        }
+      ]
+    },
+    {
+      "event": "input",
+      "url": "http://127.0.0.1:5173/home?period=all&q=Ayesha&status=Due",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "week"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Ayesha"
+        },
+        {
+          "label": "Transaction status",
+          "value": "Due"
+        }
+      ]
+    },
+    {
+      "event": "pushState",
+      "url": "http://127.0.0.1:5173/home?period=week&q=Ayesha&status=Due",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "week"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Ayesha"
+        },
+        {
+          "label": "Transaction status",
+          "value": "Due"
+        }
+      ]
+    },
+    {
+      "event": "change",
+      "url": "http://127.0.0.1:5173/home?period=week&q=Ayesha&status=Due",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "all"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Ayesha"
+        },
+        {
+          "label": "Transaction status",
+          "value": "Due"
+        }
+      ]
+    },
+    {
+      "event": "replaceState",
+      "url": "http://127.0.0.1:5173/home?period=week&q=Bilal&status=Due",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "week"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Bilal"
+        },
+        {
+          "label": "Transaction status",
+          "value": "Due"
+        }
+      ]
+    },
+    {
+      "event": "input",
+      "url": "http://127.0.0.1:5173/home?period=week&q=Bilal&status=Due",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "week"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Ayesha"
+        },
+        {
+          "label": "Transaction status",
+          "value": "Due"
+        }
+      ]
+    },
+    {
+      "event": "input",
+      "url": "http://127.0.0.1:5173/home?period=week&q=Bilal&status=Due",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "week"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Bilal"
+        },
+        {
+          "label": "Transaction status",
+          "value": "Paid"
+        }
+      ]
+    },
+    {
+      "event": "replaceState",
+      "url": "http://127.0.0.1:5173/home?period=week&q=Bilal&status=Paid",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "week"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Bilal"
+        },
+        {
+          "label": "Transaction status",
+          "value": "Paid"
+        }
+      ]
+    },
+    {
+      "event": "change",
+      "url": "http://127.0.0.1:5173/home?period=week&q=Bilal&status=Paid",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "week"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Bilal"
+        },
+        {
+          "label": "Transaction status",
+          "value": "Due"
+        }
+      ]
+    },
+    {
+      "event": "change",
+      "url": "http://127.0.0.1:5173/home?period=week&q=Bilal&status=Paid",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "week"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Bilal"
+        },
+        {
+          "label": "Transaction status",
+          "value": "Paid"
+        }
+      ]
+    },
+    {
+      "event": "pushState",
+      "url": "http://127.0.0.1:5173/home?period=all",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "week"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Bilal"
+        },
+        {
+          "label": "Transaction status",
+          "value": "Paid"
+        }
+      ]
+    },
+    {
+      "event": "replaceState",
+      "url": "http://127.0.0.1:5173/home?period=all&q=Ayesha",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "all"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Ayesha"
+        },
+        {
+          "label": "Transaction status",
+          "value": "All"
+        }
+      ]
+    },
+    {
+      "event": "input",
+      "url": "http://127.0.0.1:5173/home?period=all&q=Ayesha",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "all"
+        },
+        {
+          "label": "Search transactions",
+          "value": ""
+        },
+        {
+          "label": "Transaction status",
+          "value": "All"
+        }
+      ]
+    },
+    {
+      "event": "input",
+      "url": "http://127.0.0.1:5173/home?period=all&q=Ayesha",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "all"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Ayesha"
+        },
+        {
+          "label": "Transaction status",
+          "value": "Due"
+        }
+      ]
+    },
+    {
+      "event": "replaceState",
+      "url": "http://127.0.0.1:5173/home?period=all&q=Ayesha&status=Due",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "all"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Ayesha"
+        },
+        {
+          "label": "Transaction status",
+          "value": "Due"
+        }
+      ]
+    },
+    {
+      "event": "change",
+      "url": "http://127.0.0.1:5173/home?period=all&q=Ayesha&status=Due",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "all"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Ayesha"
+        },
+        {
+          "label": "Transaction status",
+          "value": "All"
+        }
+      ]
+    },
+    {
+      "event": "change",
+      "url": "http://127.0.0.1:5173/home?period=all&q=Ayesha&status=Due",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "all"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Ayesha"
+        },
+        {
+          "label": "Transaction status",
+          "value": "Due"
+        }
+      ]
+    },
+    {
+      "event": "input",
+      "url": "http://127.0.0.1:5173/home?period=all&q=Ayesha&status=Due",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "week"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Ayesha"
+        },
+        {
+          "label": "Transaction status",
+          "value": "Due"
+        }
+      ]
+    },
+    {
+      "event": "pushState",
+      "url": "http://127.0.0.1:5173/home?period=week&q=Ayesha&status=Due",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "week"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Ayesha"
+        },
+        {
+          "label": "Transaction status",
+          "value": "Due"
+        }
+      ]
+    },
+    {
+      "event": "change",
+      "url": "http://127.0.0.1:5173/home?period=week&q=Ayesha&status=Due",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "all"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Ayesha"
+        },
+        {
+          "label": "Transaction status",
+          "value": "Due"
+        }
+      ]
+    },
+    {
+      "event": "replaceState",
+      "url": "http://127.0.0.1:5173/home?period=week&q=Bilal&status=Due",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "week"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Bilal"
+        },
+        {
+          "label": "Transaction status",
+          "value": "Due"
+        }
+      ]
+    },
+    {
+      "event": "input",
+      "url": "http://127.0.0.1:5173/home?period=week&q=Bilal&status=Due",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "week"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Ayesha"
+        },
+        {
+          "label": "Transaction status",
+          "value": "Due"
+        }
+      ]
+    },
+    {
+      "event": "input",
+      "url": "http://127.0.0.1:5173/home?period=week&q=Bilal&status=Due",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "week"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Bilal"
+        },
+        {
+          "label": "Transaction status",
+          "value": "Paid"
+        }
+      ]
+    },
+    {
+      "event": "replaceState",
+      "url": "http://127.0.0.1:5173/home?period=week&q=Bilal&status=Paid",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "week"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Bilal"
+        },
+        {
+          "label": "Transaction status",
+          "value": "Paid"
+        }
+      ]
+    },
+    {
+      "event": "change",
+      "url": "http://127.0.0.1:5173/home?period=week&q=Bilal&status=Paid",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "week"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Bilal"
+        },
+        {
+          "label": "Transaction status",
+          "value": "Due"
+        }
+      ]
+    },
+    {
+      "event": "change",
+      "url": "http://127.0.0.1:5173/home?period=week&q=Bilal&status=Paid",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "week"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Bilal"
+        },
+        {
+          "label": "Transaction status",
+          "value": "Paid"
+        }
+      ]
+    },
+    {
+      "event": "pushState",
+      "url": "http://127.0.0.1:5173/home?period=all",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "week"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Bilal"
+        },
+        {
+          "label": "Transaction status",
+          "value": "Paid"
+        }
+      ]
+    },
+    {
+      "event": "replaceState",
+      "url": "http://127.0.0.1:5173/home?period=all&q=Ayesha",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "all"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Ayesha"
+        },
+        {
+          "label": "Transaction status",
+          "value": "All"
+        }
+      ]
+    },
+    {
+      "event": "input",
+      "url": "http://127.0.0.1:5173/home?period=all&q=Ayesha",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "all"
+        },
+        {
+          "label": "Search transactions",
+          "value": ""
+        },
+        {
+          "label": "Transaction status",
+          "value": "All"
+        }
+      ]
+    },
+    {
+      "event": "input",
+      "url": "http://127.0.0.1:5173/home?period=all&q=Ayesha",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "all"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Ayesha"
+        },
+        {
+          "label": "Transaction status",
+          "value": "Due"
+        }
+      ]
+    },
+    {
+      "event": "replaceState",
+      "url": "http://127.0.0.1:5173/home?period=all&q=Ayesha&status=Due",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "all"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Ayesha"
+        },
+        {
+          "label": "Transaction status",
+          "value": "Due"
+        }
+      ]
+    },
+    {
+      "event": "change",
+      "url": "http://127.0.0.1:5173/home?period=all&q=Ayesha&status=Due",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "all"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Ayesha"
+        },
+        {
+          "label": "Transaction status",
+          "value": "All"
+        }
+      ]
+    },
+    {
+      "event": "change",
+      "url": "http://127.0.0.1:5173/home?period=all&q=Ayesha&status=Due",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "all"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Ayesha"
+        },
+        {
+          "label": "Transaction status",
+          "value": "Due"
+        }
+      ]
+    },
+    {
+      "event": "input",
+      "url": "http://127.0.0.1:5173/home?period=all&q=Ayesha&status=Due",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "week"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Ayesha"
+        },
+        {
+          "label": "Transaction status",
+          "value": "Due"
+        }
+      ]
+    },
+    {
+      "event": "pushState",
+      "url": "http://127.0.0.1:5173/home?period=week&q=Ayesha&status=Due",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "week"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Ayesha"
+        },
+        {
+          "label": "Transaction status",
+          "value": "Due"
+        }
+      ]
+    },
+    {
+      "event": "change",
+      "url": "http://127.0.0.1:5173/home?period=week&q=Ayesha&status=Due",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "all"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Ayesha"
+        },
+        {
+          "label": "Transaction status",
+          "value": "Due"
+        }
+      ]
+    },
+    {
+      "event": "replaceState",
+      "url": "http://127.0.0.1:5173/home?period=week&q=Bilal&status=Due",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "week"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Bilal"
+        },
+        {
+          "label": "Transaction status",
+          "value": "Due"
+        }
+      ]
+    },
+    {
+      "event": "input",
+      "url": "http://127.0.0.1:5173/home?period=week&q=Bilal&status=Due",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "week"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Ayesha"
+        },
+        {
+          "label": "Transaction status",
+          "value": "Due"
+        }
+      ]
+    },
+    {
+      "event": "input",
+      "url": "http://127.0.0.1:5173/home?period=week&q=Bilal&status=Due",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "week"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Bilal"
+        },
+        {
+          "label": "Transaction status",
+          "value": "Paid"
+        }
+      ]
+    },
+    {
+      "event": "replaceState",
+      "url": "http://127.0.0.1:5173/home?period=week&q=Bilal&status=Paid",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "week"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Bilal"
+        },
+        {
+          "label": "Transaction status",
+          "value": "Paid"
+        }
+      ]
+    },
+    {
+      "event": "change",
+      "url": "http://127.0.0.1:5173/home?period=week&q=Bilal&status=Paid",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "week"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Bilal"
+        },
+        {
+          "label": "Transaction status",
+          "value": "Due"
+        }
+      ]
+    },
+    {
+      "event": "change",
+      "url": "http://127.0.0.1:5173/home?period=week&q=Bilal&status=Paid",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "week"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Bilal"
+        },
+        {
+          "label": "Transaction status",
+          "value": "Paid"
+        }
+      ]
+    },
+    {
+      "event": "pushState",
+      "url": "http://127.0.0.1:5173/home?period=all",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "week"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Bilal"
+        },
+        {
+          "label": "Transaction status",
+          "value": "Paid"
+        }
+      ]
+    },
+    {
+      "event": "replaceState",
+      "url": "http://127.0.0.1:5173/home?period=all&q=Ayesha",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "all"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Ayesha"
+        },
+        {
+          "label": "Transaction status",
+          "value": "All"
+        }
+      ]
+    },
+    {
+      "event": "input",
+      "url": "http://127.0.0.1:5173/home?period=all&q=Ayesha",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "all"
+        },
+        {
+          "label": "Search transactions",
+          "value": ""
+        },
+        {
+          "label": "Transaction status",
+          "value": "All"
+        }
+      ]
+    },
+    {
+      "event": "input",
+      "url": "http://127.0.0.1:5173/home?period=all&q=Ayesha",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "all"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Ayesha"
+        },
+        {
+          "label": "Transaction status",
+          "value": "Due"
+        }
+      ]
+    },
+    {
+      "event": "replaceState",
+      "url": "http://127.0.0.1:5173/home?period=all&q=Ayesha&status=Due",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "all"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Ayesha"
+        },
+        {
+          "label": "Transaction status",
+          "value": "Due"
+        }
+      ]
+    },
+    {
+      "event": "change",
+      "url": "http://127.0.0.1:5173/home?period=all&q=Ayesha&status=Due",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "all"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Ayesha"
+        },
+        {
+          "label": "Transaction status",
+          "value": "All"
+        }
+      ]
+    },
+    {
+      "event": "change",
+      "url": "http://127.0.0.1:5173/home?period=all&q=Ayesha&status=Due",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "all"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Ayesha"
+        },
+        {
+          "label": "Transaction status",
+          "value": "Due"
+        }
+      ]
+    },
+    {
+      "event": "replaceState",
+      "url": "http://127.0.0.1:5173/home?period=all&q=&status=Due",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "all"
+        },
+        {
+          "label": "Search transactions",
+          "value": ""
+        },
+        {
+          "label": "Transaction status",
+          "value": "Due"
+        }
+      ]
+    },
+    {
+      "event": "input",
+      "url": "http://127.0.0.1:5173/home?period=all&q=&status=Due",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "all"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Ayesha"
+        },
+        {
+          "label": "Transaction status",
+          "value": "Due"
+        }
+      ]
+    },
+    {
+      "event": "input",
+      "url": "http://127.0.0.1:5173/home?period=all&q=&status=Due",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "all"
+        },
+        {
+          "label": "Search transactions",
+          "value": ""
+        },
+        {
+          "label": "Transaction status",
+          "value": "All"
+        }
+      ]
+    },
+    {
+      "event": "replaceState",
+      "url": "http://127.0.0.1:5173/home?period=all&q=&status=All",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "all"
+        },
+        {
+          "label": "Search transactions",
+          "value": ""
+        },
+        {
+          "label": "Transaction status",
+          "value": "All"
+        }
+      ]
+    },
+    {
+      "event": "change",
+      "url": "http://127.0.0.1:5173/home?period=all&q=&status=All",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "all"
+        },
+        {
+          "label": "Search transactions",
+          "value": ""
+        },
+        {
+          "label": "Transaction status",
+          "value": "Due"
+        }
+      ]
+    },
+    {
+      "event": "input",
+      "url": "http://127.0.0.1:5173/home?period=all&q=&status=All",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "day"
+        },
+        {
+          "label": "Search transactions",
+          "value": ""
+        },
+        {
+          "label": "Transaction status",
+          "value": "All"
+        }
+      ]
+    },
+    {
+      "event": "pushState",
+      "url": "http://127.0.0.1:5173/home?period=day&q=&status=All",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "day"
+        },
+        {
+          "label": "Search transactions",
+          "value": ""
+        },
+        {
+          "label": "Transaction status",
+          "value": "All"
+        }
+      ]
+    },
+    {
+      "event": "change",
+      "url": "http://127.0.0.1:5173/home?period=day&q=&status=All",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "all"
+        },
+        {
+          "label": "Search transactions",
+          "value": ""
+        },
+        {
+          "label": "Transaction status",
+          "value": "All"
+        }
+      ]
+    },
+    {
+      "event": "pushState",
+      "url": "http://127.0.0.1:5173/home?period=all&q=&status=All",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "all"
+        },
+        {
+          "label": "Search transactions",
+          "value": ""
+        },
+        {
+          "label": "Transaction status",
+          "value": "All"
+        }
+      ]
+    },
+    {
+      "event": "change",
+      "url": "http://127.0.0.1:5173/home?period=all&q=&status=All",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "day"
+        },
+        {
+          "label": "Search transactions",
+          "value": ""
+        },
+        {
+          "label": "Transaction status",
+          "value": "All"
+        }
+      ]
+    },
+    {
+      "event": "replaceState",
+      "url": "http://127.0.0.1:5173/home?period=day&q=Ayesha&status=All",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "day"
+        },
+        {
+          "label": "Search transactions",
+          "value": "Ayesha"
+        },
+        {
+          "label": "Transaction status",
+          "value": "All"
+        }
+      ]
+    },
+    {
+      "event": "input",
+      "url": "http://127.0.0.1:5173/home?period=day&q=Ayesha&status=All",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "day"
+        },
+        {
+          "label": "Search transactions",
+          "value": ""
+        },
+        {
+          "label": "Transaction status",
+          "value": "All"
+        }
+      ]
+    },
+    {
+      "event": "replaceState",
+      "url": "http://127.0.0.1:5173/home?period=day&q=&status=Due",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "day"
+        },
+        {
+          "label": "Search transactions",
+          "value": ""
+        },
+        {
+          "label": "Transaction status",
+          "value": "Due"
+        }
+      ]
+    },
+    {
+      "event": "change",
+      "url": "http://127.0.0.1:5173/home?period=day&q=&status=Due",
+      "controls": [
+        {
+          "label": "Date range",
+          "value": "day"
+        },
+        {
+          "label": "Search transactions",
+          "value": ""
+        },
+        {
+          "label": "Transaction status",
+          "value": "All"
+        }
+      ]
+    }
+  ],
+  "events": []
+}

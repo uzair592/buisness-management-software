@@ -1,0 +1,86 @@
+- link "Skip to content":
+  - /url: "#main"
+- banner:
+  - button "Open navigation"
+  - text: Sample general store Main location · PKR
+  - button "Search pages and actions"
+  - 'button "Preview: available functionality"': Preview
+- status:
+  - text: Sample data — changes reset
+  - button "Exit sample workspace"
+- main:
+  - paragraph: OVERVIEW
+  - heading "Home" [level=1]
+  - paragraph: A snapshot of your sample store.
+  - combobox "Date range":
+    - option "15 Oct 2026" [selected]
+    - option "Last 7 sample days"
+    - option "All sample dates"
+  - link "＋ New Sale":
+    - /url: /sales/new
+  - link "View Sales":
+    - /url: /sales?period=day
+    - text: Sales
+    - strong: PKR 1,772.50
+    - text: 2 sample sales
+  - link "View Receivables":
+    - /url: /sales?status=Due&period=day
+    - text: Receivables
+    - strong: PKR 487.00
+    - text: Outstanding on selected sales
+  - link "View Payables":
+    - /url: /purchases?status=Due&period=day
+    - text: Payables
+    - strong: PKR 1,673.00
+    - text: Outstanding on selected purchases
+  - link "View Low stock":
+    - /url: /items?filter=low
+    - text: Low stock
+    - strong: "3"
+    - text: Items at reorder level · 15 Oct
+  - heading "Recent transactions" [level=2]
+  - paragraph: Selected sample dates · sales and purchases
+  - link "View sales →":
+    - /url: /sales?period=day
+  - text: Search transactions
+  - searchbox "Search transactions"
+  - text: Transaction status
+  - combobox "Transaction status":
+    - option "All"
+    - option "Paid"
+    - option "Due" [selected]
+  - table:
+    - rowgroup:
+      - row "Transaction Amount Status":
+        - columnheader "Transaction"
+        - columnheader "Amount"
+        - columnheader "Status"
+    - rowgroup:
+      - row "View Sample S-1047 PKR 687.00 Due":
+        - cell "View Sample S-1047":
+          - button "View Sample S-1047": Bilal Traders Sample S-1047
+        - cell "PKR 687.00"
+        - cell "Due"
+      - row "View Sample P-0216 PKR 2,673.00 Due":
+        - cell "View Sample P-0216":
+          - button "View Sample P-0216": Bright Supplies Sample P-0216
+        - cell "PKR 2,673.00"
+        - cell "Due"
+  - text: 2 transactions
+  - heading "Quick actions" [level=2]
+  - link "New Sale Build a bill":
+    - /url: /sales/new
+  - link "Purchases Supplier bills":
+    - /url: /purchases
+  - link "Parties Customers & suppliers":
+    - /url: /parties
+  - link "Items & Stock Prices & availability":
+    - /url: /items
+  - heading "Stock to watch" [level=2]
+  - paragraph: Sample snapshot · 15 Oct 2026
+  - list:
+    - listitem: Basmati rice · 1 kg 6 left
+    - listitem: Blue ballpoint pen 8 left
+    - listitem: Hand soap · 100 g 5 left
+  - link "Review low stock →":
+    - /url: /items?filter=low
