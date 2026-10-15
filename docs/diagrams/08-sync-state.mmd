@@ -1,0 +1,12 @@
+stateDiagram-v2
+    [*] --> Draft
+    Draft --> Queued: Local transaction committed
+    Queued --> Sending: Connected and authenticated
+    Sending --> Acknowledged: Accepted or duplicate accepted
+    Sending --> Queued: Timeout or retryable error
+    Sending --> Blocked: Missing dependency or upgrade
+    Sending --> Held: Permission or issued-document conflict
+    Blocked --> Queued: Dependency accepted or app upgraded
+    Held --> Resolved: Reviewed with explicit resolution
+    Acknowledged --> [*]
+    Resolved --> [*]

@@ -1,0 +1,11 @@
+flowchart TD
+    Open["Open cash session and counted float"] --> Trade["Record receipts, refunds and expenses"]
+    Trade --> Sync["Sync assigned device queues"]
+    Sync --> Freeze["Request close at server watermark"]
+    Freeze --> Count["Enter physical cash count"]
+    Count --> Difference{"Variance?"}
+    Difference -->|No| Close["Seal session and counted balance"]
+    Difference -->|Yes| Reason["Require reason and permitted approval"]
+    Reason --> Close
+    Close --> Late["Late offline entries remain visible as late adjustments"]
+    Late --> Report["Retain original close and reconciliation history"]

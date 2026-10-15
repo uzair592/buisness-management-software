@@ -1,0 +1,14 @@
+flowchart TD
+    Open["Previously enrolled device"] --> Lease{"Offline lease valid?"}
+    Lease -->|No| Read["Read saved data and prepare draft"]
+    Lease -->|Yes| Sale["Create permitted cash sale"]
+    Sale --> Check["Validate cached policy and local stock warning"]
+    Check --> Local["One local transaction: invoice, number and outbox"]
+    Local --> Print["Print saved invoice; cloud sync pending"]
+    Print --> Connect["Reconnect and authenticate"]
+    Connect --> Push["Retry same immutable command"]
+    Push --> Result{"Server outcome?"}
+    Result -->|Accepted| Accepted["Apply canonical entries and cursor"]
+    Result -->|Needs review| Held["Preserve issued invoice in review queue"]
+    Result -->|Temporary failure| Retry["Keep durable queue and retry"]
+    Retry --> Connect

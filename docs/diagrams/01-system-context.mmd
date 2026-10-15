@@ -1,0 +1,10 @@
+flowchart TD
+    Owner["Owner and accountant"] --> App["Business app"]
+    Staff["Billing and stock staff"] --> App
+    App --> Local["Device database and outbox"]
+    Local <--> API["Authenticated cloud API"]
+    API --> DB["Shared business database"]
+    API --> Worker["Jobs and notifications"]
+    App --> Print["Browser print or approved bridge"]
+    Worker --> Files["Private backups and attachments"]
+    Worker --> Providers["Optional message and payment providers"]

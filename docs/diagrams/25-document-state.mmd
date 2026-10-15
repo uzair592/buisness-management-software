@@ -1,0 +1,14 @@
+stateDiagram-v2
+    [*] --> Draft
+    Draft --> IssuedLocal: Permitted offline issue
+    Draft --> Posted: Online acceptance
+    IssuedLocal --> Posted: Sync acceptance
+    IssuedLocal --> ReviewRequired: Authority or compatibility conflict
+    ReviewRequired --> Posted: Explicit authorised acceptance
+    ReviewRequired --> ResolvedUnposted: Retain original and resolution evidence
+    Posted --> PartlyCredited: Partial credit note
+    PartlyCredited --> FullyCredited: Remaining quantities credited
+    Posted --> FullyCredited: Full credit or eligible reversal
+    Draft --> Discarded: No issued number or effects
+    FullyCredited --> [*]
+    ResolvedUnposted --> [*]

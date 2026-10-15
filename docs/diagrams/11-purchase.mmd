@@ -1,0 +1,9 @@
+flowchart TD
+    Start["Purchase bill or linked order"] --> Supplier["Supplier and unique reference"]
+    Supplier --> Lines["Items, quantities, costs and tax"]
+    Lines --> Pay["Paid amount and payment account"]
+    Pay --> Validate["Validate totals and duplicate reference"]
+    Validate --> Post["Atomic bill, stock receipt and journal"]
+    Post --> Value["Update moving average or cost exception"]
+    Value --> Due["Show supplier payable and payment history"]
+    Due --> Audit["Save source document and audit trail"]

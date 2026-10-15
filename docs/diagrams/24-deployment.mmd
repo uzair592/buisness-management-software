@@ -1,0 +1,12 @@
+flowchart TD
+    Clients["Desktop and mobile PWA"] --> TLS["HTTPS edge and same-origin routing"]
+    TLS --> Web["Versioned app assets"]
+    TLS --> API["API service"]
+    API --> DB["Private PostgreSQL"]
+    API --> Object["Private object storage"]
+    Worker["Background worker"] --> DB
+    Worker --> Object
+    Worker --> Providers["Optional external providers"]
+    DB --> Backup["Encrypted backups and restore drills"]
+    API --> Observe["Metrics, traces and redacted logs"]
+    Worker --> Observe

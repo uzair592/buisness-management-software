@@ -1,0 +1,9 @@
+flowchart TD
+    Start["Money action"] --> Kind{"Expense or transfer?"}
+    Kind -->|Expense| Expense["Category, amount, account and attachment"]
+    Kind -->|Transfer| Transfer["Source, destination, amount and reference"]
+    Expense --> Validate["Validate permissions and balances policy"]
+    Transfer --> Validate
+    Validate --> Atomic["Atomic balanced journal and source record"]
+    Atomic --> Books["Update cash and bank books"]
+    Books --> Reports["Expense affects profit; transfer does not"]

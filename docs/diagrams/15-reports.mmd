@@ -1,0 +1,10 @@
+flowchart TD
+    Request["Choose report, dates and location"] --> Network{"Cloud reachable?"}
+    Network -->|Yes| Canonical["Query posted server ledger at cursor"]
+    Network -->|No| Snapshot["Read downloaded report snapshot"]
+    Canonical --> Pending["Show unsynced device count and local queue"]
+    Snapshot --> Label["Show last sync and incomplete coverage label"]
+    Pending --> Result["Display source, coverage and valuation exceptions"]
+    Label --> Result
+    Result --> Drill["Drill into source documents"]
+    Drill --> Export["Export same filters and freshness metadata"]

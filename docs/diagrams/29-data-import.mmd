@@ -1,0 +1,9 @@
+flowchart TD
+    Upload["Upload CSV or supported archive"] --> Parse["Validate size, headers and types"]
+    Parse --> Map["Map columns, units and identifiers"]
+    Map --> Preview["Dry run with row errors and duplicate policy"]
+    Preview --> Correct{"Ready?"}
+    Correct -->|No| Upload
+    Correct -->|Yes| Commit["Commit idempotent staged import batch"]
+    Commit --> Reconcile["Verify counts and opening balances"]
+    Reconcile --> Report["Download result and keep audit record"]

@@ -1,0 +1,14 @@
+flowchart TD
+    Start["Owner requests backup"] --> Scope{"Backup scope"}
+    Scope -->|Cloud records| Cloud["Consistent tenant snapshot and attachments"]
+    Scope -->|Pending local work| Local["Encrypted device recovery bundle"]
+    Cloud --> Manifest["Versioned manifest and checksums"]
+    Local --> Manifest
+    Manifest --> Download["Download and verify archive"]
+    Download --> Restore["Restore into isolated recovery space"]
+    Restore --> Validate["Validate schema, counts, balances and identifiers"]
+    Validate --> Preview["Show differences and unresolved commands"]
+    Preview --> Decide{"Owner selects resolution"}
+    Decide -->|Review only| Keep["Keep current business unchanged"]
+    Decide -->|Promote recovery| Epoch["Fence devices and increment dataset epoch"]
+    Epoch --> Resnapshot["Re-enrol devices; inspect old queues separately"]

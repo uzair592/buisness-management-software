@@ -1,0 +1,17 @@
+sequenceDiagram
+    participant UI as Billing app
+    participant L as Local database
+    participant S as Sync API
+    participant D as PostgreSQL
+    UI->>L: Commit invoice, number and command
+    L-->>UI: Saved on device
+    UI->>S: Push command C1 and payload hash
+    S->>D: Lock business cursor and affected rows
+    S->>D: Commit receipt, effects and change feed
+    D-->>S: Commit accepted at cursor 42
+    Note over UI,S: Connection drops before acknowledgement
+    UI->>S: Retry C1 with identical payload
+    S->>D: Read immutable command receipt
+    D-->>S: Return original result, no new effects
+    S-->>UI: Accepted C1 at cursor 42
+    UI->>L: Apply result and mark acknowledged atomically

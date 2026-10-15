@@ -1,0 +1,28 @@
+erDiagram
+    BUSINESS ||--o{ PARTY : owns
+    BUSINESS ||--o{ ITEM : owns
+    PARTY o|--o{ TRADE_DOCUMENT : relates
+    TRADE_DOCUMENT ||--|{ DOCUMENT_LINE : contains
+    ITEM o|--o{ DOCUMENT_LINE : snapshots
+    TRADE_DOCUMENT ||--o{ CREDIT_LINK : credits
+    PAYMENT ||--o{ PAYMENT_ALLOCATION : supplies
+    TRADE_DOCUMENT ||--o{ PAYMENT_ALLOCATION : settles
+    PAYMENT o|--o{ REFUND : funds
+    TRADE_DOCUMENT ||--o{ REFUND : authorises
+    TRADE_DOCUMENT {
+        uuid id PK
+        uuid business_id FK
+        string document_type
+        string number
+        string status
+        decimal gross_total
+    }
+    DOCUMENT_LINE {
+        uuid id PK
+        uuid business_id FK
+        uuid document_id FK
+        uuid item_id FK
+        decimal quantity_base
+        decimal tax_amount
+        string item_snapshot
+    }

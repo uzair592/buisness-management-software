@@ -1,0 +1,9 @@
+flowchart TD
+    Owner["Owner revokes device or membership"] --> Server["Revoke sessions and future sync authority"]
+    Server --> Notify["Connected device locks immediately"]
+    Server --> Offline["Disconnected device may work until lease expires"]
+    Offline --> Reconnect["Device reconnects with pending issued records"]
+    Reconnect --> Hold["Quarantine pending commands; no automatic posting"]
+    Hold --> Review["Owner compares evidence and selects resolution"]
+    Review --> Accept["Accept once with audit or retain unposted case"]
+    Notify --> Cache["Lock local data; preserve encrypted recovery work"]

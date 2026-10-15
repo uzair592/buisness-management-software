@@ -1,0 +1,12 @@
+flowchart TD
+    Start["Receive or pay money"] --> Party["Party, direction and account"]
+    Party --> Amount["Amount and reference"]
+    Amount --> Allocate{"Allocate now?"}
+    Allocate -->|Yes| Lock["Lock open documents and remaining amounts"]
+    Allocate -->|No| Unallocated["Keep unapplied receipt or advance"]
+    Lock --> Check{"Within outstanding and payment?"}
+    Check -->|No| Correct["Correct allocations; no partial posting"]
+    Correct --> Amount
+    Check -->|Yes| Post["Atomic journal and allocation records"]
+    Unallocated --> Post
+    Post --> View["Receipt, account book and party statement"]

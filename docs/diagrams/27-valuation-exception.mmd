@@ -1,0 +1,10 @@
+flowchart TD
+    Sale["Accepted stock sale"] --> Qty{"Known cost and sufficient quantity?"}
+    Qty -->|Yes| Cost["Post moving-average inventory and COGS"]
+    Qty -->|No| Estimate["Track deficit and provisional cost basis"]
+    Estimate --> Flag["Flag valuation exception in profit reports"]
+    Flag --> Receipt["Later receipt or approved cost evidence"]
+    Receipt --> Adjust["Append linked COGS and inventory adjustment"]
+    Adjust --> Resolve{"All deficit valued?"}
+    Resolve -->|No| Flag
+    Resolve -->|Yes| Closed["Close exception with full lineage"]

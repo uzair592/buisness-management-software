@@ -1,0 +1,10 @@
+flowchart TD
+    Edit["Edit item or party at base version"] --> Submit["Send patch and expected version"]
+    Submit --> Match{"Version matches?"}
+    Match -->|Yes| Apply["Apply patch and increment version"]
+    Match -->|No| Compare["Show current values and proposed changes"]
+    Compare --> Choose{"Authorised user decides"}
+    Choose -->|Keep current| Close["Close edit without changing current data"]
+    Choose -->|Reapply selected fields| Retry["New command against current version"]
+    Retry --> Submit
+    Apply --> Snap["Historical invoice snapshots stay fixed"]

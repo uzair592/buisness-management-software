@@ -1,0 +1,12 @@
+flowchart TD
+    New["New sale"] --> Lines["Choose customer and items"]
+    Lines --> Totals["Calculate price, discount and tax"]
+    Totals --> Payment["Cash, bank or credit split"]
+    Payment --> Draft["Persist draft and stable command ID"]
+    Draft --> API["Submit through command pipeline"]
+    API --> Validate{"Authorised and valid?"}
+    Validate -->|No| Correct["Show field or policy error"]
+    Correct --> Draft
+    Validate -->|Yes| Atomic["Commit invoice, stock, journal and receipt"]
+    Atomic --> Ack["Apply canonical acknowledgement locally"]
+    Ack --> Receipt["Print or share saved invoice"]

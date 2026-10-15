@@ -1,0 +1,32 @@
+erDiagram
+    TRADE_DOCUMENT ||--o{ STOCK_MOVEMENT : causes
+    ITEM ||--o{ STOCK_MOVEMENT : moves
+    LOCATION ||--o{ STOCK_MOVEMENT : holds
+    STOCK_MOVEMENT ||--o{ COST_ADJUSTMENT : reconciles
+    SOURCE_EVENT ||--o{ JOURNAL_ENTRY : posts
+    JOURNAL_ENTRY ||--|{ JOURNAL_LINE : contains
+    ACCOUNT ||--o{ JOURNAL_LINE : receives
+    JOURNAL_ENTRY o|--o{ JOURNAL_ENTRY : reverses
+    JOURNAL_ENTRY {
+        uuid id PK
+        uuid business_id FK
+        uuid source_event_id FK
+        date business_date
+        string posting_kind
+    }
+    JOURNAL_LINE {
+        uuid id PK
+        uuid business_id FK
+        uuid journal_entry_id FK
+        uuid account_id FK
+        decimal debit
+        decimal credit
+    }
+    STOCK_MOVEMENT {
+        uuid id PK
+        uuid business_id FK
+        uuid source_line_id FK
+        decimal quantity_delta
+        decimal value_delta
+        string valuation_status
+    }

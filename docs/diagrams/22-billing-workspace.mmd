@@ -1,0 +1,11 @@
+flowchart TD
+    Open["New sale workspace"] --> Search["Focus item search or barcode"]
+    Search --> Cart["Add item to visible invoice table"]
+    Cart --> Edit["Edit quantity, price or discount inline"]
+    Edit --> Next{"Next action"}
+    Next -->|More items| Search
+    Next -->|Customer| Party["Select or create customer in side panel"]
+    Party --> Cart
+    Next -->|Pay| Summary["Review sticky totals and payment"]
+    Summary --> Save["Save and print primary action"]
+    Save --> Result["Saved state and optional next sale"]

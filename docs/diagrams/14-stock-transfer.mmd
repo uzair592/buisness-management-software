@@ -1,0 +1,11 @@
+flowchart TD
+    Plan["Draft transfer"] --> Check["Check source stock and permissions online"]
+    Check --> Dispatch["Post source out and transit in"]
+    Dispatch --> Transit["Goods in transit"]
+    Transit --> Receive{"Destination receipt"}
+    Receive -->|Full| Complete["Transit out and destination in"]
+    Receive -->|Partial| Partial["Record received quantity; remainder stays in transit"]
+    Partial --> Transit
+    Receive -->|Damage or loss| Exception["Approved adjustment with reason"]
+    Exception --> Complete
+    Complete --> Audit["Same business cost; no sales revenue"]

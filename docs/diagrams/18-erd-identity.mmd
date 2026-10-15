@@ -1,0 +1,27 @@
+erDiagram
+    USER ||--o{ MEMBERSHIP : holds
+    BUSINESS ||--o{ MEMBERSHIP : grants
+    BUSINESS ||--|{ LOCATION : contains
+    MEMBERSHIP ||--o{ DEVICE_ENROLLMENT : authorises
+    DEVICE_ENROLLMENT ||--o{ OFFLINE_LEASE : receives
+    USER ||--o{ SESSION : opens
+    BUSINESS {
+        uuid id PK
+        string currency
+        string timezone
+        int dataset_epoch
+    }
+    MEMBERSHIP {
+        uuid id PK
+        uuid business_id FK
+        uuid user_id FK
+        string role
+        int permission_version
+    }
+    DEVICE_ENROLLMENT {
+        uuid id PK
+        uuid membership_id FK
+        uuid business_id FK
+        string number_prefix
+        string status
+    }

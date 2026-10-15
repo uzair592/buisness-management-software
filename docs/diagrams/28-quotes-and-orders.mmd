@@ -1,0 +1,10 @@
+flowchart TD
+    Draft["Draft quotation or purchase order"] --> Send["Issue non-posting document"]
+    Send --> Accept{"Accepted?"}
+    Accept -->|No| End["Expire or close with reason"]
+    Accept -->|Yes| Convert["Convert selected remaining quantities"]
+    Convert --> Invoice["Post sale or purchase through standard pipeline"]
+    Invoice --> Remaining{"Unconverted quantities?"}
+    Remaining -->|Yes| Partial["Retain partially fulfilled document"]
+    Partial --> Convert
+    Remaining -->|No| Complete["Mark fulfilled; preserve source link"]

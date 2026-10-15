@@ -1,0 +1,13 @@
+flowchart TD
+    Find["Open original accepted sale"] --> Select["Select remaining returnable quantities"]
+    Select --> Reason["Reason and restock disposition"]
+    Reason --> Validate["Lock original lines and prior credits"]
+    Validate --> Credit["Post credit note and cost reversal"]
+    Credit --> Due{"Credit use?"}
+    Due -->|Reduce unpaid balance| Allocate["Allocate credit to receivable"]
+    Due -->|Refund paid amount| Refund["Record approved cash or bank refund"]
+    Due -->|Keep customer credit| Liability["Keep customer credit balance"]
+    Refund --> Link["Link idempotent refund record"]
+    Allocate --> Link
+    Liability --> Link
+    Link --> Receipt["Print credit note and updated statement"]

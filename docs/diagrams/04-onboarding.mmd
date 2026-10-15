@@ -1,0 +1,11 @@
+flowchart TD
+    Start["Open app online"] --> Login["Create account or sign in"]
+    Login --> Business{"Existing business access?"}
+    Business -->|Yes| Select["Select permitted business"]
+    Business -->|No| Create["Create business and owner membership"]
+    Create --> Setup["Currency, time zone and tax profile"]
+    Setup --> Select
+    Select --> Register["Approve device and number prefix"]
+    Register --> Snapshot["Download scoped snapshot and cursor"]
+    Snapshot --> Check["Verify storage and offline eligibility"]
+    Check --> Ready["Ready to work"]

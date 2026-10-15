@@ -1,0 +1,27 @@
+erDiagram
+    BUSINESS ||--|| SYNC_HEAD : orders
+    BUSINESS ||--o{ CHANGE_BATCH : publishes
+    DEVICE_ENROLLMENT ||--o{ COMMAND_RECEIPT : submits
+    COMMAND_RECEIPT ||--o| SOURCE_EVENT : accepts
+    SOURCE_EVENT ||--o{ CHANGE_RECORD : emits
+    CHANGE_BATCH ||--|{ CHANGE_RECORD : groups
+    DEVICE_ENROLLMENT ||--o{ SYNC_CURSOR : tracks
+    COMMAND_RECEIPT ||--o| REVIEW_CASE : holds
+    COMMAND_RECEIPT {
+        uuid command_id PK
+        uuid business_id FK
+        uuid device_enrollment_id FK
+        string payload_hash
+        string outcome
+        string canonical_result
+    }
+    SYNC_HEAD {
+        uuid business_id PK
+        bigint committed_cursor
+        int dataset_epoch
+    }
+    CHANGE_BATCH {
+        uuid business_id FK
+        bigint cursor
+        uuid source_event_id FK
+    }

@@ -1,0 +1,14 @@
+flowchart TD
+    Action["Requested action"] --> Online{"Server reachable?"}
+    Online -->|Yes| Server["Current membership and device checks"]
+    Online -->|No| Lease["Check signed lease and device binding"]
+    Lease --> Valid{"Valid scope, time and policy?"}
+    Valid -->|No| Read["Read saved data or draft only"]
+    Valid -->|Yes| Permit{"Action offline-enabled?"}
+    Permit -->|No| Wait["Require connection"]
+    Permit -->|Yes| Local["Save locally with lease evidence"]
+    Local --> Sync["Recheck authority when uploading"]
+    Sync --> Server
+    Server --> Result{"Current authority?"}
+    Result -->|Allowed| Accept["Validate and commit once"]
+    Result -->|Revoked or expired policy| Review["Preserve payload and open review case"]
