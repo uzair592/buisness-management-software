@@ -1,4 +1,10 @@
 import { z } from "zod";
+
+const DEFAULT_DEV_SESSION_SECRET =
+  "development_secret_at_least_32_characters_long_bms!";
+const DEFAULT_DEV_LEASE_SECRET =
+  "development_lease_secret_at_least_32_characters_long!";
+
 const schema = z.object({
   NODE_ENV: z
     .enum(["development", "test", "production"])
@@ -11,7 +17,16 @@ const schema = z.object({
       (v) => ["postgres:", "postgresql:"].includes(new URL(v).protocol),
       "Must be PostgreSQL",
     ),
+  SESSION_SECRET: z
+    .string()
+    .min(32, "SESSION_SECRET must be at least 32 characters")
+    .default(DEFAULT_DEV_SESSION_SECRET),
+  LEASE_SECRET: z
+    .string()
+    .min(32, "LEASE_SECRET must be at least 32 characters")
+    .default(DEFAULT_DEV_LEASE_SECRET),
 });
+
 export function parseEnv(input: NodeJS.ProcessEnv) {
   const result = schema.safeParse(input);
   if (!result.success)
@@ -32,6 +47,12 @@ export function parseEnv(input: NodeJS.ProcessEnv) {
       url.username === "bms_local")
   )
     throw new Error("Production requires non-development database credentials");
+  if (
+    env.NODE_ENV === "production" &&
+    (env.SESSION_SECRET === DEFAULT_DEV_SESSION_SECRET ||
+      env.LEASE_SECRET === DEFAULT_DEV_LEASE_SECRET)
+  )
+    throw new Error("Production requires non-development session and lease secrets");
   if (input.DEMO_MODE && input.DEMO_MODE !== "false")
     throw new Error("Demo mode is not supported");
   return env;

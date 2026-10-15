@@ -51,10 +51,20 @@ test("invalid configuration and development production credentials fail closed",
       }),
     /PORT/,
   );
+  assert.throws(
+    () =>
+      parseEnv({
+        DATABASE_URL: "postgresql://user:unique-secret@localhost/bms",
+        NODE_ENV: "production",
+      }),
+    /session and lease secrets/,
+  );
   assert.equal(
     parseEnv({
       DATABASE_URL: "postgresql://user:unique-secret@localhost/bms",
       NODE_ENV: "production",
+      SESSION_SECRET: "production_custom_session_secret_at_least_32_chars!",
+      LEASE_SECRET: "production_custom_lease_secret_at_least_32_chars!",
     }).PORT,
     3001,
   );

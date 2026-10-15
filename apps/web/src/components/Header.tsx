@@ -1,5 +1,8 @@
+import { NavLink } from "react-router-dom";
 import { Button } from "@business/ui";
 import { usePreview } from "../preview/PreviewProvider";
+import { useAuth } from "../context/AuthContext";
+
 export function Header({
   onMenuClick,
   onCommands,
@@ -10,6 +13,8 @@ export function Header({
   onHelp: () => void;
 }) {
   const { sample } = usePreview();
+  const auth = useAuth();
+
   return (
     <header className="app-header">
       <Button
@@ -31,12 +36,26 @@ export function Header({
       </Button>
       <div className="workspace-name">
         <span className="workspace-avatar" aria-hidden="true">
-          {sample ? "S" : "B"}
+          {sample
+            ? "S"
+            : auth.authenticated && auth.activeMembership
+            ? auth.activeMembership.businessName[0].toUpperCase()
+            : "B"}
         </span>
         <div>
-          <b>{sample ? "Sample general store" : "Your workspace"}</b>
+          <b>
+            {sample
+              ? "Sample general store"
+              : auth.authenticated && auth.activeMembership
+              ? auth.activeMembership.businessName
+              : "Your workspace"}
+          </b>
           <small>
-            {sample ? "Main location · PKR" : "No business connected"}
+            {sample
+              ? "Main location · PKR"
+              : auth.authenticated && auth.activeMembership
+              ? `${auth.activeMembership.locationName ?? "Main location"} · ${auth.activeMembership.role}`
+              : "No business connected"}
           </small>
         </div>
       </div>
@@ -60,6 +79,20 @@ export function Header({
         <span>Search pages and actions</span>
         <kbd>Ctrl K</kbd>
       </Button>
+      <NavLink
+        to="/settings"
+        className="btn-ghost flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded border border-transparent hover:border-gray-200"
+        aria-label={auth.authenticated ? `Account: ${auth.user?.username}` : "Sign in to account"}
+      >
+        {auth.authenticated ? (
+          <>
+            <span className="w-2 h-2 rounded-full bg-green-500 inline-block" aria-hidden="true" />
+            <span>@{auth.user?.username}</span>
+          </>
+        ) : (
+          <span>Sign In</span>
+        )}
+      </NavLink>
       <Button
         className="preview-indicator"
         onClick={onHelp}
