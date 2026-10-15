@@ -1,5 +1,9 @@
 # M01 UI refinement evidence
 
+**CI repair follow-up:** the initial reviewed commit failed its mobile browser
+gate despite the local results below. See the [diagnosis, regression evidence
+and current validation](ci-filter-fix.md) for the repair on the same PR.
+
 Base: merged `main` at `7e2eef9`. Branch: `milestone-01-ui-refinement`.
 Validated on 15 October 2026 with Node 22.20.0, pnpm 10.28.2 and Playwright
 Chromium on Windows. [Design and isolation notes](../../m01-ui-refinement.md).

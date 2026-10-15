@@ -11,8 +11,24 @@ import {
   transactionDue,
   type SampleTransaction,
 } from "../preview/fixtures";
-export function PeriodFilter() {
+function useTransactionFilters() {
   const [params, setParams] = useSearchParams();
+  function setFilter(name: string, value: string, replace = true) {
+    // BrowserRouter commits history before its deferred React render. Compose
+    // with that current URL so consecutive handlers cannot restore stale filters.
+    // A functional setSearchParams callback also receives the render snapshot.
+    const next = new URLSearchParams(window.location.search);
+    next.set(name, value);
+    setParams(next, { replace });
+  }
+  return {
+    params,
+    setFilter,
+    resetFilters: () => setParams({ period: "all" }),
+  };
+}
+export function PeriodFilter() {
+  const { params, setFilter } = useTransactionFilters();
   return (
     <label className="inline-field">
       <span>Date range</span>
@@ -20,11 +36,7 @@ export function PeriodFilter() {
         className="input"
         aria-label="Date range"
         value={params.get("period") ?? "day"}
-        onChange={(e) => {
-          const p = new URLSearchParams(params);
-          p.set("period", e.target.value);
-          setParams(p);
-        }}
+        onChange={(e) => setFilter("period", e.target.value, false)}
       >
         <option value="day">15 Oct 2026</option>
         <option value="week">Last 7 sample days</option>
@@ -35,7 +47,7 @@ export function PeriodFilter() {
 }
 export function Transactions({ kind }: { kind?: "Sale" | "Purchase" }) {
   const { transactions } = usePreview();
-  const [params, setParams] = useSearchParams();
+  const { params, setFilter, resetFilters } = useTransactionFilters();
   const [detail, setDetail] = useState<SampleTransaction | null>(null);
   const query = params.get("q") ?? "";
   const status = params.get("status") ?? "All";
@@ -50,11 +62,6 @@ export function Transactions({ kind }: { kind?: "Sale" | "Purchase" }) {
         .toLowerCase()
         .includes(query.toLowerCase()),
   );
-  function filter(name: string, value: string) {
-    const p = new URLSearchParams(params);
-    p.set(name, value);
-    setParams(p, { replace: true });
-  }
   return (
     <>
       <div className="table-toolbar">
@@ -65,7 +72,7 @@ export function Transactions({ kind }: { kind?: "Sale" | "Purchase" }) {
             type="search"
             placeholder="Search name or reference…"
             value={query}
-            onChange={(e) => filter("q", e.target.value)}
+            onChange={(e) => setFilter("q", e.target.value)}
           />
         </label>
         <label className="inline-field">
@@ -74,7 +81,7 @@ export function Transactions({ kind }: { kind?: "Sale" | "Purchase" }) {
             className="input"
             aria-label="Transaction status"
             value={status}
-            onChange={(e) => filter("status", e.target.value)}
+            onChange={(e) => setFilter("status", e.target.value)}
           >
             <option>All</option>
             <option>Paid</option>
@@ -116,9 +123,7 @@ export function Transactions({ kind }: { kind?: "Sale" | "Purchase" }) {
               <EmptyState title="No matching transactions">
                 Try another date range, status or search.
               </EmptyState>
-              <Button onClick={() => setParams({ period: "all" })}>
-                Reset filters
-              </Button>
+              <Button onClick={resetFilters}>Reset filters</Button>
             </td>
           </tr>
         )}

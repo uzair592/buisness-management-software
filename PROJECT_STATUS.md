@@ -6,7 +6,7 @@ Last planning update: 2026-10-15.
 | --- | --- | --- |
 | M00 Product plan and diagrams | Complete | Planning documents, 30 Mermaid sources and staged agent prompts in this repository |
 | M01 Foundation | Complete; PR #1 merged | Workspace, responsive shell, PostgreSQL readiness and [M01 evidence](docs/evidence/m01/README.md); UI prototype gate only |
-| M01 UI refinement | Complete; review pending | [Before/after screenshots and checks](docs/evidence/m01-ui-refinement/README.md); isolated sample interactions only |
+| M01 UI refinement | Implemented; CI repair revalidation pending | [Screenshots and original checks](docs/evidence/m01-ui-refinement/README.md); [filter-race repair evidence](docs/evidence/m01-ui-refinement/ci-filter-fix.md); isolated sample interactions only |
 | M02 Identity and devices | Not started | — |
 | M03 Domain and journal | Not started | — |
 | M04 Catalogue and opening balances | Not started | — |
@@ -43,6 +43,14 @@ Review and merge the M01 UI refinement PR before starting [Milestone 02](prompts
 - Validation: `pnpm install --frozen-lockfile` passed. `pnpm check` passed lint, all typechecks, both production builds and 4 API/arithmetic tests. `pnpm test:e2e` passed 7 tests at 1366×768, 1920×1080 and 390×844, including reset/isolation, no posting/storage writes, filtered views, exact totals, keyboard/dialog behaviour, reduced motion and overflow. Real PostgreSQL `pnpm test:db` and `pnpm test:runtime` each passed 1 regression test. [Evidence](docs/evidence/m01-ui-refinement/README.md) includes 13 inspected screenshots and links to the unchanged baseline images.
 - Migration/rollback: internal domain workspace package and lockfile link added; no new external dependency, API change, SQL migration, business record, browser database or outbox. Roll back application code without clearing data.
 - Limits: fixed public fixtures and memory-only changes, not completed authentication, billing, payments, tax/discount engine, accounting, offline support or sync. No real invoice number is allocated or receipt saved/issued. Chromium viewport emulation only; no physical device, printer or deployment claim. M02 and all later numbered milestones remain unfinished.
+
+## PR #2 CI repair follow-up
+
+- Reviewed commit `2c7f30181ab1c88867a17ba6ee5bb37f1befe485` failed [CI](https://github.com/uzair592/buisness-management-software/actions/runs/38764566377): 6 browser tests passed; the 390×844 sample journey timed out opening S-1045. Install, check, database and runtime stages passed. Earlier local results above are historical, not evidence of CI acceptance.
+- Confirmed a stale URL snapshot race with consecutive native filter events in the real production preview. Date/search/status handlers now compose with current browser history. Original ordinary mobile journey and all 3 new filter regression tests pass; reset, details, focus and Back/Forward preserve the intended filters.
+- Local validation: `pnpm check` passed (lint/typechecks/builds/4 tests); `pnpm test:e2e` passed **10 tests** across all three target viewports. `pnpm test:db` passed 1 real PostgreSQL test. `pnpm test:runtime` initially returned readiness 503 during concurrent checks and passed 1 test on rerun; precise cause unconfirmed. [Full diagnostics and screenshots](docs/evidence/m01-ui-refinement/ci-filter-fix.md).
+- CI now retains failure traces/screenshots, HTML reports and attached browser state/accessibility/console diagnostics. Remote repair validation is pending; this does not yet claim the failed CI gate repaired remotely.
+- Same branch and PR #2; no migration, API, storage or future-milestone implementation. M02 remains eligible only after refinement review and merge.
 
 ## M00 validation
 
