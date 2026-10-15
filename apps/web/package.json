@@ -9,19 +9,21 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@business/contracts": "workspace:*",
     "@business/domain": "workspace:*",
+    "@business/ui": "workspace:*",
+    "dexie": "4.4.6",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "react-router-dom": "^7.12.0",
-    "@business/ui": "workspace:*"
+    "react-router-dom": "^7.12.0"
   },
   "devDependencies": {
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^5.1.0",
-    "vite": "^7.3.0",
-    "tailwindcss": "^3.4.19",
+    "autoprefixer": "^10.4.23",
     "postcss": "^8.5.6",
-    "autoprefixer": "^10.4.23"
+    "tailwindcss": "^3.4.19",
+    "vite": "^7.3.0"
   }
 }

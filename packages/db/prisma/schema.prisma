@@ -1,8 +1,162 @@
 generator client {
-  provider = "prisma-client-js"
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
 }
+
 datasource db {
   provider = "postgresql"
-  url = env("DATABASE_URL")
 }
-// Business tables and tenant constraints begin in M02. M01 changes no data.
+
+model User {
+  id           String        @id @default(uuid()) @db.Uuid
+  username     String        @unique @db.VarChar(50)
+  passwordHash String        @map("password_hash") @db.Text
+  email        String?       @db.VarChar(255)
+  fullName     String        @map("full_name") @db.VarChar(100)
+  createdAt    DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime      @updatedAt @map("updated_at") @db.Timestamptz
+  memberships  Membership[]
+  sessions     Session[]
+  auditEvents  AuditEvent[]
+
+  @@map("users")
+}
+
+model Business {
+  id                     String                 @id @default(uuid()) @db.Uuid
+  name                   String                 @db.VarChar(100)
+  currency               String                 @default("PKR") @db.VarChar(10)
+  timezone               String                 @default("Asia/Karachi") @db.VarChar(50)
+  datasetEpoch           Int                    @default(1) @map("dataset_epoch") @db.Integer
+  createdAt              DateTime               @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt              DateTime               @updatedAt @map("updated_at") @db.Timestamptz
+  locations              Location[]
+  memberships            Membership[]
+  deviceEnrollments      DeviceEnrollment[]
+  devicePrefixRegistries DevicePrefixRegistry[]
+  offlineLeases          OfflineLease[]
+  sessions               Session[]
+  auditEvents            AuditEvent[]
+
+  @@map("businesses")
+}
+
+model Location {
+  id                String             @id @default(uuid()) @db.Uuid
+  businessId        String             @map("business_id") @db.Uuid
+  code              String             @db.VarChar(20)
+  name              String             @db.VarChar(100)
+  createdAt         DateTime           @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime           @updatedAt @map("updated_at") @db.Timestamptz
+  business          Business           @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  deviceEnrollments DeviceEnrollment[]
+  memberships       Membership[]
+
+  @@unique([businessId, id])
+  @@unique([businessId, code])
+  @@map("locations")
+}
+
+model Membership {
+  id                String             @id @default(uuid()) @db.Uuid
+  businessId        String             @map("business_id") @db.Uuid
+  userId            String             @map("user_id") @db.Uuid
+  role              String             @db.VarChar(30)
+  permissionVersion Int                @default(1) @map("permission_version") @db.Integer
+  locationId        String?            @map("location_id") @db.Uuid
+  createdAt         DateTime           @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime           @updatedAt @map("updated_at") @db.Timestamptz
+  business          Business           @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  user              User               @relation(fields: [userId], references: [id], onDelete: Restrict)
+  location          Location?          @relation(fields: [businessId, locationId], references: [businessId, id], onDelete: Restrict)
+  deviceEnrollments DeviceEnrollment[]
+  offlineLeases     OfflineLease[]
+
+  @@unique([businessId, id])
+  @@unique([userId, businessId])
+  @@map("memberships")
+}
+
+model Session {
+  id                 String    @id @default(uuid()) @db.Uuid
+  userId             String    @map("user_id") @db.Uuid
+  selectedBusinessId String?   @map("selected_business_id") @db.Uuid
+  tokenHash          String    @unique @map("token_hash") @db.VarChar(64)
+  csrfToken          String    @map("csrf_token") @db.VarChar(64)
+  userAgent          String?   @map("user_agent") @db.Text
+  ipAddress          String?   @map("ip_address") @db.VarChar(45)
+  expiresAt          DateTime  @map("expires_at") @db.Timestamptz
+  revokedAt          DateTime? @map("revoked_at") @db.Timestamptz
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  selectedBusiness   Business? @relation(fields: [selectedBusinessId], references: [id], onDelete: SetNull)
+
+  @@index([tokenHash])
+  @@index([userId, revokedAt, expiresAt])
+  @@map("sessions")
+}
+
+model DeviceEnrollment {
+  id            String         @id @default(uuid()) @db.Uuid
+  businessId    String         @map("business_id") @db.Uuid
+  membershipId  String         @map("membership_id") @db.Uuid
+  locationId    String         @map("location_id") @db.Uuid
+  deviceName    String         @map("device_name") @db.VarChar(100)
+  numberPrefix  String         @map("number_prefix") @db.VarChar(10)
+  status        String         @default("Enrolled") @db.VarChar(20)
+  enrolledAt    DateTime       @default(now()) @map("enrolled_at") @db.Timestamptz
+  revokedAt     DateTime?      @map("revoked_at") @db.Timestamptz
+  updatedAt     DateTime       @updatedAt @map("updated_at") @db.Timestamptz
+  business      Business       @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  membership    Membership     @relation(fields: [businessId, membershipId], references: [businessId, id], onDelete: Restrict)
+  location      Location       @relation(fields: [businessId, locationId], references: [businessId, id], onDelete: Restrict)
+  offlineLeases OfflineLease[]
+
+  @@unique([businessId, id])
+  @@unique([businessId, numberPrefix])
+  @@map("device_enrollments")
+}
+
+model DevicePrefixRegistry {
+  id           String   @id @default(uuid()) @db.Uuid
+  businessId   String   @map("business_id") @db.Uuid
+  numberPrefix String   @map("number_prefix") @db.VarChar(10)
+  enrolledAt   DateTime @default(now()) @map("enrolled_at") @db.Timestamptz
+  business     Business @relation(fields: [businessId], references: [id], onDelete: Restrict)
+
+  @@unique([businessId, numberPrefix])
+  @@map("device_prefix_registry")
+}
+
+model OfflineLease {
+  id                 String           @id @default(uuid()) @db.Uuid
+  businessId         String           @map("business_id") @db.Uuid
+  deviceEnrollmentId String           @map("device_enrollment_id") @db.Uuid
+  membershipId       String           @map("membership_id") @db.Uuid
+  datasetEpoch       Int              @map("dataset_epoch") @db.Integer
+  policyVersion      Int              @default(1) @map("policy_version") @db.Integer
+  issuedAt           DateTime         @default(now()) @map("issued_at") @db.Timestamptz
+  expiresAt          DateTime         @map("expires_at") @db.Timestamptz
+  revokedAt          DateTime?        @map("revoked_at") @db.Timestamptz
+  signature          String           @db.Text
+  business           Business         @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  deviceEnrollment   DeviceEnrollment @relation(fields: [businessId, deviceEnrollmentId], references: [businessId, id], onDelete: Restrict)
+  membership         Membership       @relation(fields: [businessId, membershipId], references: [businessId, id], onDelete: Restrict)
+
+  @@unique([businessId, id])
+  @@map("offline_leases")
+}
+
+model AuditEvent {
+  id         String    @id @default(uuid()) @db.Uuid
+  businessId String?   @map("business_id") @db.Uuid
+  userId     String?   @map("user_id") @db.Uuid
+  action     String    @db.VarChar(50)
+  details    Json      @default("{}")
+  ipAddress  String?   @map("ip_address") @db.VarChar(45)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  business   Business? @relation(fields: [businessId], references: [id], onDelete: SetNull)
+  user       User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@map("audit_events")
+}

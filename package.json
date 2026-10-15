@@ -11,22 +11,24 @@
     "build": "pnpm -r build",
     "lint": "eslint . --max-warnings 0",
     "typecheck": "tsc -p tsconfig.check.json --noEmit && pnpm -r typecheck",
-    "test": "tsx --test tests/api.test.ts tests/decimal.test.ts",
-    "test:db": "tsx --test tests/db.test.ts",
+    "test": "tsx --test tests/api.test.ts tests/decimal.test.ts tests/local-db.test.ts",
+    "test:db": "tsx --test tests/db.test.ts tests/db-isolation.test.ts tests/identity-api.test.ts",
     "test:runtime": "tsx --test tests/runtime.test.ts",
     "test:e2e": "playwright test",
     "check": "pnpm lint && pnpm typecheck && pnpm build && pnpm test",
-    "db:generate": "pnpm --filter @business/db generate"
+    "db:generate": "pnpm --filter @business/db generate",
+    "db:migrate": "pnpm --filter @business/db migrate"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.0",
-    "eslint": "^10.0.0",
-    "typescript-eslint": "^8.50.0",
-    "globals": "^16.5.0",
-    "typescript": "^5.9.3",
-    "tsx": "^4.21.0",
-    "@types/node": "^22.19.0",
     "@playwright/test": "^1.58.0",
-    "prettier": "^3.9.10"
+    "@types/node": "^22.19.0",
+    "eslint": "^10.0.0",
+    "fake-indexeddb": "6.2.5",
+    "globals": "^16.5.0",
+    "prettier": "^3.9.10",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.50.0"
   }
 }

@@ -7,52 +7,58 @@ import { PlannedPage } from "./pages/PlannedPage";
 import { PreviewProvider } from "./preview/PreviewProvider";
 import { RecordsPage } from "./pages/RecordsPage";
 import { DirectoryPage } from "./pages/DirectoryPage";
+import { SettingsPage } from "./pages/SettingsPage";
+import { AuthProvider } from "./context/AuthContext";
+
 const planned = [
   ["cash-bank", "Cash & Bank", "Account books, receipts and payments"],
   ["expenses", "Expenses", "Categories and cash expenses"],
   ["reports", "Reports", "Business reports with explicit data coverage"],
-  ["settings", "Settings", "Business profile, users and approved devices"],
   ["sync", "Sync & Backup", "Offline transactions, device sync and recovery"],
 ];
+
 export default function App() {
   return (
-    <PreviewProvider>
-      <Shell>
-        <Routes>
-          <Route path="/" element={<Navigate to="/home" replace />} />
-          <Route path="/home" element={<HomePage />} />
-          <Route path="/sales" element={<SalesPage />} />
-          <Route path="/sales/new" element={<NewSalePage />} />
-          <Route
-            path="/purchases"
-            element={<RecordsPage title="Purchases" kind="Purchase" />}
-          />
-          <Route
-            path="/parties"
-            element={<DirectoryPage key="parties" type="parties" />}
-          />
-          <Route
-            path="/items"
-            element={<DirectoryPage key="items" type="items" />}
-          />
-          {planned.map(([path, title, description]) => (
+    <AuthProvider>
+      <PreviewProvider>
+        <Shell>
+          <Routes>
+            <Route path="/" element={<Navigate to="/home" replace />} />
+            <Route path="/home" element={<HomePage />} />
+            <Route path="/sales" element={<SalesPage />} />
+            <Route path="/sales/new" element={<NewSalePage />} />
             <Route
-              key={path}
-              path={"/" + path}
-              element={<PlannedPage title={title} description={description} />}
+              path="/purchases"
+              element={<RecordsPage title="Purchases" kind="Purchase" />}
             />
-          ))}
-          <Route
-            path="*"
-            element={
-              <PlannedPage
-                title="Page not found"
-                description="Choose a workspace from navigation."
+            <Route
+              path="/parties"
+              element={<DirectoryPage key="parties" type="parties" />}
+            />
+            <Route
+              path="/items"
+              element={<DirectoryPage key="items" type="items" />}
+            />
+            <Route path="/settings" element={<SettingsPage />} />
+            {planned.map(([path, title, description]) => (
+              <Route
+                key={path}
+                path={"/" + path}
+                element={<PlannedPage title={title} description={description} />}
               />
-            }
-          />
-        </Routes>
-      </Shell>
-    </PreviewProvider>
+            ))}
+            <Route
+              path="*"
+              element={
+                <PlannedPage
+                  title="Page not found"
+                  description="Choose a workspace from navigation."
+                />
+              }
+            />
+          </Routes>
+        </Shell>
+      </PreviewProvider>
+    </AuthProvider>
   );
 }
