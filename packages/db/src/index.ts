@@ -36,5 +36,3 @@ export async function withTenantContext<T>(
 }
 
 export * from "./generated/prisma/client.js";
-export { Client } from "pg";
-export { provisionDatabase } from "./provision.js";

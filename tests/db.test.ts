@@ -1,7 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execSync } from "node:child_process";
-import { createDatabase, Client, provisionDatabase } from "../packages/db/src/index";
+import { Client } from "pg";
+import { createDatabase } from "../packages/db/src/index";
+import { provisionDatabase } from "../packages/db/src/provision";
 import { createApp } from "../apps/api/src/app";
 
 test("real PostgreSQL readiness, outage and recovery", async () => {

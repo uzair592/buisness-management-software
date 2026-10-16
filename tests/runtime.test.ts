@@ -35,9 +35,13 @@ test(
     t.after(() => {
       child.kill();
     });
+    let stderr = "";
+    child.stderr?.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
     const started = once(child.stdout, "data");
     const exited = once(child, "exit").then(([code]) => {
-      throw new Error("API exited before listening: " + code);
+      throw new Error(`API exited before listening: ${code}. Stderr: ${stderr}`);
     });
     await Promise.race([started, exited]);
     for (const endpoint of ["live", "ready"]) {
