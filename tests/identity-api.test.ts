@@ -15,7 +15,8 @@ test("End-to-end identity, auth, rate-limiting, devices, and bootstrap API under
 
   const runtimeParsed = new URL(superuserUrl);
   runtimeParsed.username = process.env.BMS_RUNTIME_USER || "bms_runtime";
-  runtimeParsed.password = process.env.BMS_RUNTIME_PASSWORD || "bms_runtime";
+  runtimeParsed.password =
+    process.env.BMS_RUNTIME_PASSWORD || "bms_runtime_pass_change_in_production";
   const runtimeDbUrl = runtimeParsed.toString();
 
   const adminDb = createDatabase(superuserUrl);
