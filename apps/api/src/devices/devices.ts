@@ -234,6 +234,10 @@ export async function issueOfflineLease(
         throw new Error("Cannot issue lease for an unenrolled or revoked device");
       }
 
+      if (device.membershipId !== opts.membershipId) {
+        throw new Error("Cannot issue lease for a device enrolled for another membership");
+      }
+
       const business = await tx.business.findUniqueOrThrow({
         where: { id: opts.businessId },
       });

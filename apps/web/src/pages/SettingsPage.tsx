@@ -130,6 +130,9 @@ export function SettingsPage() {
           setLocalCache(null);
           setDevices([]);
           setLocations([]);
+          if (boundDeviceId && auth.selectedBusinessId) {
+            localStorage.removeItem(`bms_verified_bootstrap_${auth.selectedBusinessId}_${boundDeviceId}`);
+          }
           return;
         }
 
@@ -153,7 +156,7 @@ export function SettingsPage() {
     })();
   }, [auth.authenticated, auth.selectedBusinessId]);
 
-  // Load cached local IndexedDB if available for the explicitly bound device
+  // Load cached local IndexedDB if verified bootstrap metadata is present for the explicitly bound device
   useEffect(() => {
     if (!auth.authenticated || !auth.user || !auth.selectedBusinessId || !boundDeviceId) {
       return;
@@ -161,12 +164,35 @@ export function SettingsPage() {
     const boundDevice = devices.find((d) => d.id === boundDeviceId && d.status === "Enrolled");
     if (!boundDevice) return;
 
-    const epoch = localCache?.business?.datasetEpoch ?? 1;
+    // Require verified bootstrap metadata before opening the scoped partition
+    // Never guess the dataset epoch or assume authority without verified metadata
+    const metaKey = `bms_verified_bootstrap_${auth.selectedBusinessId}_${boundDevice.id}`;
+    const storedMetaRaw = localStorage.getItem(metaKey);
+    if (!storedMetaRaw) {
+      return;
+    }
+
+    let storedMeta: { userId?: string; businessId?: string; enrollmentId?: string; datasetEpoch?: number };
+    try {
+      storedMeta = JSON.parse(storedMetaRaw);
+    } catch {
+      return;
+    }
+
+    if (
+      storedMeta.userId !== auth.user.id ||
+      storedMeta.businessId !== auth.selectedBusinessId ||
+      storedMeta.enrollmentId !== boundDevice.id ||
+      typeof storedMeta.datasetEpoch !== "number"
+    ) {
+      return;
+    }
+
     const db = getLocalDatabase({
       userId: auth.user.id,
       businessId: auth.selectedBusinessId,
       enrollmentId: boundDevice.id,
-      datasetEpoch: epoch,
+      datasetEpoch: storedMeta.datasetEpoch,
     });
 
     void readCachedIdentity(db).then((data) => {
@@ -309,6 +335,9 @@ export function SettingsPage() {
         if (res.status === 401 || res.status === 403) {
           closeActiveLocalDb();
           setLocalCache(null);
+          if (auth.selectedBusinessId) {
+            localStorage.removeItem(`bms_verified_bootstrap_${auth.selectedBusinessId}_${device.id}`);
+          }
         }
         return;
       }
@@ -325,6 +354,18 @@ export function SettingsPage() {
       await bootstrapLocalIdentity(db, bootstrapData);
       const cached = await readCachedIdentity(db);
       setLocalCache(cached);
+
+      localStorage.setItem(
+        `bms_verified_bootstrap_${auth.selectedBusinessId}_${device.id}`,
+        JSON.stringify({
+          userId: auth.user!.id,
+          businessId: auth.selectedBusinessId!,
+          enrollmentId: device.id,
+          datasetEpoch: bootstrapData.business.datasetEpoch,
+          bootstrappedAt: new Date().toISOString(),
+        }),
+      );
+
       setBootstrapStatus("Bootstrap successful! Permitted data cached in partitioned IndexedDB.");
     } catch (err: unknown) {
       setBootstrapStatus(`Bootstrap error: ${err instanceof Error ? err.message : "Unknown error"}`);

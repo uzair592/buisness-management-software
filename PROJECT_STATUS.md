@@ -67,8 +67,8 @@ Review and merge the Milestone 02 PR before starting [Milestone 03: Domain and j
 
 ## M02 Repair: Authentication, Isolation and Provisioning Evidence
 
-- Branch: `fix/m02-auth-and-isolation`, created from latest merged `main` (`ee0752f`).
-- Confirmed Findings and Repairs:
+- Branch: `fix/m02-auth-and-isolation`, created from latest merged `main` (`ee0752f`). Open PR: [#4](https://github.com/uzair592/buisness-management-software/pull/4).
+- Confirmed Findings and Tested Repairs:
   1. **Revoked Membership Access Removal**: `getSessionByToken` now strictly validates that `session.selectedBusinessId` matches an active membership of the user. If membership in that business was removed or revoked, `selectedBusinessId` and `activeMembership` are cleared to `null` and persisted to the database. Tenant requests require an active matching membership (`requireTenantContext`), preventing revoked users from reading locations or managing devices.
   2. **Restricted Runtime Role Operation**: Addressed unscoped membership and session hydration queries under `bms_runtime`. Migrated registration flow so user, business, location, owner membership, prefix registry, and audit event creation run within tenant context (`withTenantContext`) without requiring `bypassRls: true`.
   3. **Real Browser Authentication E2E**: Configured `/v1` and `/health` proxies in `apps/web/vite.config.ts` for both development and production preview. Configured Playwright `webServer` to launch the compiled API against native PostgreSQL. Added full browser E2E test in `tests/e2e/identity-and-devices.spec.ts` testing owner registration, reload persistence, device binding, IndexedDB bootstrap, password change, logout, and login with updated credentials.
@@ -77,21 +77,28 @@ Review and merge the Milestone 02 PR before starting [Milestone 03: Domain and j
      - Scoped location queries return only assigned location for non-owner members with `membership.locationId`.
      - Deliberate device binding implemented via `bms_device_binding_${businessId}` in `localStorage`.
      - Dynamic server-provided `datasetEpoch` replaces hardcoded epoch 1.
-     - On authority rejection (401/403) or business switch, UI state is cleared and the active local database partition is cleanly closed via `closeActiveLocalDb()`.
-  5. **Authentication Throttling & Trusted Proxy**:
-     - Arbitrary `X-Forwarded-For` header spoofing eliminated: Fastify IP resolution is governed by explicit `trustProxy` configuration.
-     - Enforced account-level rate limits (5 failures) alongside trusted source IP limits (10 failures).
-     - Successful login resets only the user's `accountKey` rate-limiting bucket without wiping source abuse tracking.
-  6. **Database Provisioning**:
-     - Added migration `20261016120000_repair_runtime_provisioning_and_isolation` granting connect dynamically on `current_database()` to `bms_runtime` and refining locations RLS policy for member reads.
-     - Created `packages/db/src/provision.ts` (`pnpm db:provision`) to safely configure `bms_runtime` with password from `BMS_RUNTIME_PASSWORD` without hardcoding database name `bms` or overwriting applied migration history.
-  7. **Comprehensive Verification**:
-     - `pnpm check`: Passed ESLint 10 (0 warnings/errors), strict typechecking across all 7 workspace packages, API & web builds, and 8 unit tests.
-     - `pnpm test:db`: Passed 3 real PostgreSQL test suites (`tests/db.test.ts`, `tests/db-isolation.test.ts`, `tests/identity-api.test.ts`) under `bms_runtime`.
+     - Enforced device membership assignment: devices enrolled for a specific member cannot be leased or bootstrapped by other users (`403 Forbidden`). Tested two Cashiers at the same location (Bob and Dave): Dave cannot lease or bootstrap Bob's device.
+     - Lease invariants: `/v1/sync/bootstrap` strictly validates that returned or issued leases match the caller's membership, business dataset epoch, and membership permission version. Bumping `datasetEpoch` or `permissionVersion` invalidates old leases and generates new leases with the updated metadata.
+     - On authority rejection (401/403) or business switch, UI state and verified bootstrap metadata are cleared and the active local database partition is cleanly closed via `closeActiveLocalDb()`.
+  5. **Authentication Throttling & Trusted Proxy Configuration**:
+     - `apps/api/src/app.ts` defaults `trustProxy` to safe `false` for direct connections. Proxy trust is allowed only through explicit, validated deployment configuration (`TRUST_PROXY` in `env.ts` and `server.ts`).
+     - Added test verifying that under the default setup, rotating `X-Forwarded-For` headers cannot change the effective client IP or evade source throttling (10 failed attempts trigger 429 on the 11th).
+     - Enforced account-level rate limits (5 failures) alongside trusted source IP limits (10 failures). Successful login resets only the user's `accountKey` rate-limiting bucket without wiping source abuse tracking.
+  6. **Arbitrary Database Name Provisioning & Safe Migration Upgrade Path**:
+     - Removed hardcoded `bms` database requirement from migration `20261015000000_init_identity_and_devices/migration.sql` and `packages/db/src/provision.ts`. Connection grant now dynamically uses `current_database()`.
+     - Migration 1 creates role `bms_runtime` without a default password; `provision.ts` configures runtime password and enforces non-default secure password in production.
+     - Preserves safe upgrade path for existing databases via migration `20261016120000_repair_runtime_provisioning_and_isolation`.
+     - Added automated regression test in `tests/db.test.ts` verifying fresh installation on an arbitrarily named database (`bms_arb_*`), testing rejection of default passwords in production mode, provisioning, Prisma migration deploy, and connecting as `bms_runtime` with custom credentials without creating or touching an extra `bms` database.
+  7. **Local Cache Initialization & No Guessed Epoch**:
+     - In `SettingsPage.tsx`, removed guessed epoch `1` fallback when loading bound device cache. Requires verified bootstrap metadata in local storage (`userId`, `businessId`, `enrollmentId`, numeric `datasetEpoch`) matching the current authenticated user and bound device before opening the scoped partition.
+     - Added unit regression test in `tests/local-db.test.ts` verifying partition resolution rejects missing or tampered metadata and never guesses epoch 1.
+  8. **Comprehensive Verification**:
+     - `pnpm check`: Passed ESLint 10 (0 warnings/errors), strict typechecking across all workspace packages and tests, API & web builds, and 9 unit tests.
+     - `pnpm test:db`: Passed 4 real PostgreSQL test suites (`tests/db.test.ts`, `tests/db-isolation.test.ts`, `tests/identity-api.test.ts`) under `bms_runtime` including arbitrary DB provisioning and two-user same-location device isolation.
      - `pnpm test:runtime`: Passed compiled API startup and database readiness test.
-     - `pnpm test:e2e`: Passed all 13 Playwright tests across 1366×768, 1920×1080, and 390×844 viewports.
+     - `pnpm test:e2e`: Passed all 13 Playwright browser tests across 1366×768, 1920×1080, and 390×844 viewports.
 - Migration/Provisioning Instructions:
-  - Run `pnpm db:provision` to create or update the `bms_runtime` role with dynamic permissions on the active database.
+  - Run `pnpm db:provision` to create or update the `bms_runtime` role with dynamic permissions on the active database using `BMS_RUNTIME_PASSWORD`.
   - Run `pnpm db:migrate` (which runs provisioning followed by `prisma migrate deploy`).
 
 ## M00 validation

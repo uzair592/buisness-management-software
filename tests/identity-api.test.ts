@@ -106,6 +106,42 @@ test("End-to-end identity, auth, rate-limiting, devices, and bootstrap API under
   });
   assert.equal(rateLimitRes.statusCode, 429, "Spoofed IPs must not bypass account rate limit");
 
+  // Clear rate limits before testing source-level throttling
+  clearAllRateLimits();
+
+  // Test source throttling with rotating X-Forwarded-For under safe default (trustProxy: false)
+  // An attacker uses 10 different usernames and 10 different X-Forwarded-For headers
+  for (let i = 1; i <= 10; i++) {
+    const failRes = await app.inject({
+      method: "POST",
+      url: "/v1/auth/login",
+      headers: { "x-forwarded-for": `198.51.100.${i}` },
+      payload: {
+        username: `attacker_target_${i}_${suffix}`,
+        password: "WrongPassword!",
+      },
+    });
+    assert.equal(failRes.statusCode, 401);
+  }
+
+  // 11th attempt with yet another rotated username and rotated X-Forwarded-For:
+  // Because trustProxy defaults to false, Fastify uses the direct socket IP (127.0.0.1).
+  // The source limit (10 failures) is tripped for 127.0.0.1, so the 11th attempt returns 429!
+  const sourceRateLimitRes = await app.inject({
+    method: "POST",
+    url: "/v1/auth/login",
+    headers: { "x-forwarded-for": "198.51.100.254" },
+    payload: {
+      username: `fresh_victim_${suffix}`,
+      password: "WrongPassword!",
+    },
+  });
+  assert.equal(
+    sourceRateLimitRes.statusCode,
+    429,
+    "Rotating X-Forwarded-For must NOT evade source rate limits in default setup",
+  );
+
   // Clear rate limits for clean continuation
   clearAllRateLimits();
 
@@ -639,7 +675,38 @@ test("End-to-end identity, auth, rate-limiting, devices, and bootstrap API under
     .join("; ");
   const charlieCsrf = charlieLoginRes.json().csrfToken;
 
-  // Charlie (Viewer) attempts to issue an offline lease via /v1/devices/lease: MUST FAIL 403!
+  // Create Charlie's own enrolled device
+  const charlieDevId = crypto.randomUUID();
+  await withTenantContext(adminDb, { bypassRls: true }, async (tx) => {
+    await tx.devicePrefixRegistry.create({
+      data: { businessId: bizBId, numberPrefix: "DC1" },
+    });
+    await tx.deviceEnrollment.create({
+      data: {
+        id: charlieDevId,
+        businessId: bizBId,
+        membershipId: charlieMemId,
+        locationId: locBId,
+        deviceName: "Charlie Viewer Device",
+        numberPrefix: "DC1",
+        status: "Enrolled",
+      },
+    });
+  });
+
+  // Charlie attempts to bootstrap Bob's device (devBId): MUST FAIL 403 (device assigned to Bob)!
+  const charlieBobDevRes = await app.inject({
+    method: "GET",
+    url: `/v1/sync/bootstrap?deviceEnrollmentId=${devBId}`,
+    headers: { cookie: charlieCookies },
+  });
+  assert.equal(
+    charlieBobDevRes.statusCode,
+    403,
+    "Member cannot bootstrap a device assigned to another member",
+  );
+
+  // Charlie (Viewer) attempts to issue an offline lease for his own device: MUST FAIL 403 (Viewer role)!
   const charlieLeaseRes = await app.inject({
     method: "POST",
     url: "/v1/devices/lease",
@@ -648,7 +715,7 @@ test("End-to-end identity, auth, rate-limiting, devices, and bootstrap API under
       "x-csrf-token": charlieCsrf,
     },
     payload: {
-      deviceEnrollmentId: devBId,
+      deviceEnrollmentId: charlieDevId,
     },
   });
   assert.equal(
@@ -657,10 +724,10 @@ test("End-to-end identity, auth, rate-limiting, devices, and bootstrap API under
     "Viewer role must be forbidden from issuing offline leases",
   );
 
-  // Charlie (Viewer) calls /v1/sync/bootstrap: MUST NOT obtain a lease (lease must be null)
+  // Charlie (Viewer) calls /v1/sync/bootstrap with his own device: succeeds but lease is null
   const charlieBootstrapRes = await app.inject({
     method: "GET",
-    url: `/v1/sync/bootstrap?deviceEnrollmentId=${devBId}`,
+    url: `/v1/sync/bootstrap?deviceEnrollmentId=${charlieDevId}`,
     headers: { cookie: charlieCookies },
   });
   assert.equal(charlieBootstrapRes.statusCode, 200);
@@ -669,4 +736,201 @@ test("End-to-end identity, auth, rate-limiting, devices, and bootstrap API under
     null,
     "Viewer must receive null lease and cannot obtain offline authority",
   );
+
+  // =========================================================================
+  // REGRESSION 3: TWO PERMITTED USERS AT SAME LOCATION & LEASE INVARIANTS (Item 2)
+  // Scenario:
+  // - Bob and Dave are both Cashiers at the same location (locBId).
+  // - devBId is enrolled for Bob.
+  // - Dave cannot lease or bootstrap devBId (403 - assigned to Bob).
+  // - Dave enrolls devDaveId at locBId.
+  // - Dave can lease/bootstrap devDaveId; Bob cannot lease/bootstrap devDaveId.
+  // - Re-bootstrap returns existing lease matching membership, epoch, policyVersion.
+  // - Bumping datasetEpoch invalidates old lease and issues a new lease with epoch 2.
+  // - Bumping membership permissionVersion invalidates old lease and issues a new lease.
+  // =========================================================================
+  const daveId = crypto.randomUUID();
+  const daveMemBId = crypto.randomUUID();
+  const devDaveId = crypto.randomUUID();
+
+  await withTenantContext(adminDb, { bypassRls: true }, async (tx) => {
+    const daveHash = await hashPassword("DavePassword123!");
+    await tx.user.create({
+      data: {
+        id: daveId,
+        username: `dave_${suffix}`,
+        passwordHash: daveHash,
+        fullName: "Dave Cashier",
+      },
+    });
+    await tx.membership.create({
+      data: {
+        id: daveMemBId,
+        businessId: bizBId,
+        userId: daveId,
+        role: "Cashier",
+        locationId: locBId, // Same location as Bob!
+      },
+    });
+    await tx.devicePrefixRegistry.create({
+      data: { businessId: bizBId, numberPrefix: "DD1" },
+    });
+    await tx.deviceEnrollment.create({
+      data: {
+        id: devDaveId,
+        businessId: bizBId,
+        membershipId: daveMemBId,
+        locationId: locBId,
+        deviceName: "Dave Cashier Device",
+        numberPrefix: "DD1",
+        status: "Enrolled",
+      },
+    });
+  });
+
+  // Dave logs in
+  const daveLoginRes = await app.inject({
+    method: "POST",
+    url: "/v1/auth/login",
+    payload: {
+      username: `dave_${suffix}`,
+      password: "DavePassword123!",
+    },
+  });
+  assert.equal(daveLoginRes.statusCode, 200);
+  const daveCookies = (daveLoginRes.headers["set-cookie"] as string[])
+    .map((c) => c.split(";")[0])
+    .join("; ");
+  const daveCsrf = daveLoginRes.json().csrfToken;
+
+  // Dave attempts to lease Bob's device (devBId) -> 403 Forbidden
+  const daveBobLeaseRes = await app.inject({
+    method: "POST",
+    url: "/v1/devices/lease",
+    headers: {
+      cookie: daveCookies,
+      "x-csrf-token": daveCsrf,
+    },
+    payload: {
+      deviceEnrollmentId: devBId,
+    },
+  });
+  assert.equal(
+    daveBobLeaseRes.statusCode,
+    403,
+    "Dave cannot lease Bob's device even though they share the same location and role",
+  );
+
+  // Dave attempts to bootstrap Bob's device (devBId) -> 403 Forbidden
+  const daveBobBootstrapRes = await app.inject({
+    method: "GET",
+    url: `/v1/sync/bootstrap?deviceEnrollmentId=${devBId}`,
+    headers: { cookie: daveCookies },
+  });
+  assert.equal(
+    daveBobBootstrapRes.statusCode,
+    403,
+    "Dave cannot bootstrap Bob's device at the same location",
+  );
+
+  // Bob attempts to lease Dave's device (devDaveId) -> 403 Forbidden
+  const bobDaveLeaseRes = await app.inject({
+    method: "POST",
+    url: "/v1/devices/lease",
+    headers: {
+      cookie: bobCookies,
+      "x-csrf-token": bobLoginRes.json().csrfToken,
+    },
+    payload: {
+      deviceEnrollmentId: devDaveId,
+    },
+  });
+  assert.equal(bobDaveLeaseRes.statusCode, 403, "Bob cannot lease Dave's device");
+
+  // Dave bootstraps his own device -> 200 with lease for Dave
+  const daveBootstrapRes = await app.inject({
+    method: "GET",
+    url: `/v1/sync/bootstrap?deviceEnrollmentId=${devDaveId}`,
+    headers: { cookie: daveCookies },
+  });
+  assert.equal(daveBootstrapRes.statusCode, 200);
+  const daveBootstrap = daveBootstrapRes.json();
+  assert.ok(daveBootstrap.lease, "Dave should receive a lease for his enrolled device");
+  assert.equal(daveBootstrap.lease.membershipId, daveMemBId);
+
+  // Bob bootstraps his own device -> 200 with lease for Bob
+  const bobBootstrap2Res = await app.inject({
+    method: "GET",
+    url: `/v1/sync/bootstrap?deviceEnrollmentId=${devBId}`,
+    headers: { cookie: bobCookies },
+  });
+  assert.equal(bobBootstrap2Res.statusCode, 200);
+  const bobBootstrap2 = bobBootstrap2Res.json();
+  const initialBobLease = bobBootstrap2.lease;
+  assert.ok(initialBobLease);
+  assert.equal(initialBobLease.membershipId, bobMemBId);
+  assert.equal(initialBobLease.datasetEpoch, 1);
+  assert.equal(initialBobLease.policyVersion, 1);
+
+  // Calling bootstrap again returns the SAME lease
+  const bobBootstrapCached = await app.inject({
+    method: "GET",
+    url: `/v1/sync/bootstrap?deviceEnrollmentId=${devBId}`,
+    headers: { cookie: bobCookies },
+  });
+  assert.equal(bobBootstrapCached.statusCode, 200);
+  assert.equal(
+    bobBootstrapCached.json().lease.id,
+    initialBobLease.id,
+    "Unexpired matching lease must be returned",
+  );
+
+  // Bump business datasetEpoch to 2
+  await withTenantContext(adminDb, { bypassRls: true }, async (tx) => {
+    await tx.business.update({
+      where: { id: bizBId },
+      data: { datasetEpoch: 2 },
+    });
+  });
+
+  // Bob bootstraps again: must NOT return the epoch 1 lease; must issue a new lease with datasetEpoch 2!
+  const bobEpoch2Res = await app.inject({
+    method: "GET",
+    url: `/v1/sync/bootstrap?deviceEnrollmentId=${devBId}`,
+    headers: { cookie: bobCookies },
+  });
+  assert.equal(bobEpoch2Res.statusCode, 200);
+  const bobEpoch2Lease = bobEpoch2Res.json().lease;
+  assert.ok(bobEpoch2Lease);
+  assert.notEqual(
+    bobEpoch2Lease.id,
+    initialBobLease.id,
+    "Old epoch lease must not be reused when datasetEpoch increases",
+  );
+  assert.equal(bobEpoch2Lease.datasetEpoch, 2);
+
+  // Bump Bob's membership permissionVersion to 2
+  await withTenantContext(adminDb, { bypassRls: true }, async (tx) => {
+    await tx.membership.update({
+      where: { id: bobMemBId },
+      data: { permissionVersion: 2 },
+    });
+  });
+
+  // Bob bootstraps again: must NOT return the policyVersion 1 lease; must issue a new lease with policyVersion 2!
+  const bobPolicy2Res = await app.inject({
+    method: "GET",
+    url: `/v1/sync/bootstrap?deviceEnrollmentId=${devBId}`,
+    headers: { cookie: bobCookies },
+  });
+  assert.equal(bobPolicy2Res.statusCode, 200);
+  const bobPolicy2Lease = bobPolicy2Res.json().lease;
+  assert.ok(bobPolicy2Lease);
+  assert.notEqual(
+    bobPolicy2Lease.id,
+    bobEpoch2Lease.id,
+    "Old policyVersion lease must not be reused when permissionVersion increases",
+  );
+  assert.equal(bobPolicy2Lease.policyVersion, 2);
+  assert.equal(bobPolicy2Lease.datasetEpoch, 2);
 });

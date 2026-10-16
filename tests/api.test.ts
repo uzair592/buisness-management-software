@@ -68,4 +68,25 @@ test("invalid configuration and development production credentials fail closed",
     }).PORT,
     3001,
   );
+  assert.equal(
+    parseEnv({
+      DATABASE_URL: "postgresql://user:unique-secret@localhost/bms",
+      TRUST_PROXY: "false",
+    }).trustProxy,
+    false,
+  );
+  assert.equal(
+    parseEnv({
+      DATABASE_URL: "postgresql://user:unique-secret@localhost/bms",
+      TRUST_PROXY: "true",
+    }).trustProxy,
+    true,
+  );
+  assert.deepEqual(
+    parseEnv({
+      DATABASE_URL: "postgresql://user:unique-secret@localhost/bms",
+      TRUST_PROXY: "127.0.0.1, 192.168.1.1",
+    }).trustProxy,
+    ["127.0.0.1", "192.168.1.1"],
+  );
 });

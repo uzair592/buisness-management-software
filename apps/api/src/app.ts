@@ -64,7 +64,7 @@ export function createApp(
   let sessionSecret = "development_secret_at_least_32_characters_long_bms!";
   let leaseSecret = "development_lease_secret_at_least_32_characters_long!";
   let isProduction = false;
-  let trustProxy: boolean | string | string[] | ((address: string, hop: number) => boolean) = true;
+  let trustProxy: boolean | string | string[] | ((address: string, hop: number) => boolean) = false;
 
   if (typeof optionsOrCheckDb === "function") {
     checkDatabase = optionsOrCheckDb;
@@ -777,6 +777,10 @@ export function createApp(
       return reply.code(403).send({ error: "Device is not enrolled or has been revoked" });
     }
 
+    if (device.membershipId !== tenant.membership.id) {
+      return reply.code(403).send({ error: "Device is enrolled for another membership" });
+    }
+
     if (tenant.membership.locationId && tenant.membership.role !== "Owner") {
       if (device.locationId !== tenant.membership.locationId) {
         return reply.code(403).send({ error: "Device location does not match membership scope" });
@@ -847,6 +851,9 @@ export function createApp(
           where: {
             businessId: tenant.businessId,
             deviceEnrollmentId,
+            membershipId: tenant.membership.id,
+            datasetEpoch: b.datasetEpoch,
+            policyVersion: tenant.membership.permissionVersion,
             revokedAt: null,
             expiresAt: { gt: new Date() },
           },
@@ -859,6 +866,10 @@ export function createApp(
 
     if (!device || device.status !== "Enrolled") {
       return reply.code(403).send({ error: "Device is not enrolled or has been revoked" });
+    }
+
+    if (device.membershipId !== tenant.membership.id) {
+      return reply.code(403).send({ error: "Device is enrolled for another membership" });
     }
 
     if (tenant.membership.locationId && tenant.membership.role !== "Owner") {

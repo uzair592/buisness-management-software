@@ -21,17 +21,19 @@ export async function provisionDatabase(options: ProvisionOptions = {}) {
     process.env.DATABASE_URL ||
     "postgresql://bms_local:bms_local@127.0.0.1:5432/bms?schema=public";
 
-  const runtimeUser = options.runtimeUser || process.env.BMS_RUNTIME_USER || "bms_runtime";
-  const runtimePassword =
-    options.runtimePassword || process.env.BMS_RUNTIME_PASSWORD || "bms_runtime";
-
   const isProduction =
     options.isProduction ??
     (process.env.NODE_ENV === "production");
 
-  if (isProduction && (!runtimePassword || runtimePassword === "bms_runtime")) {
+  const runtimeUser = options.runtimeUser || process.env.BMS_RUNTIME_USER || "bms_runtime";
+  const runtimePassword =
+    options.runtimePassword ||
+    process.env.BMS_RUNTIME_PASSWORD ||
+    (isProduction ? undefined : "bms_runtime_pass_change_in_production");
+
+  if (!runtimePassword || (isProduction && (runtimePassword === "bms_runtime" || runtimePassword === "bms_runtime_pass_change_in_production"))) {
     throw new Error(
-      "Production deployment requires a secure, non-default BMS_RUNTIME_PASSWORD",
+      "Database provisioning requires a secure, non-default BMS_RUNTIME_PASSWORD",
     );
   }
 
@@ -60,22 +62,6 @@ export async function provisionDatabase(options: ProvisionOptions = {}) {
     await client.query(`GRANT USAGE ON SCHEMA public TO "${runtimeUser.replace(/"/g, '""')}";`);
     await client.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO "${runtimeUser.replace(/"/g, '""')}";`);
     await client.query(`ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO "${runtimeUser.replace(/"/g, '""')}";`);
-
-    // 3. Fresh installation compatibility:
-    // If the database is NOT named "bms", ensure database "bms" exists on the cluster
-    // so legacy migration 20261015000000 line 217 does not fail during fresh setup.
-    if (currentDb !== "bms") {
-      const bmsCheck = await client.query(
-        "SELECT 1 FROM pg_database WHERE datname = 'bms';",
-      );
-      if (bmsCheck.rowCount === 0) {
-        try {
-          await client.query('CREATE DATABASE "bms";');
-        } catch {
-          // Ignore if insufficient privileges or created concurrently
-        }
-      }
-    }
 
     return { currentDb, runtimeUser };
   } finally {

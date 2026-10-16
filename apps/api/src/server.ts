@@ -17,6 +17,7 @@ const app = createApp({
   sessionSecret: env.SESSION_SECRET,
   leaseSecret: env.LEASE_SECRET,
   isProduction: env.NODE_ENV === "production",
+  trustProxy: env.trustProxy,
 });
 
 app.addHook("onClose", async () => {
