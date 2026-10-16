@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import type { PrismaClient } from "@business/db";
+import { type PrismaClient, withTenantContext } from "@business/db";
 
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
@@ -22,10 +22,12 @@ export async function createSession(
   const tokenHash = hashToken(rawToken);
   const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
 
-  // Find first membership to set as default selected business if available
-  const membership = await db.membership.findFirst({
-    where: { userId },
-    orderBy: { createdAt: "asc" },
+  // Find first membership to set as default selected business under user context
+  const membership = await withTenantContext(db, { userId }, async (tx) => {
+    return await tx.membership.findFirst({
+      where: { userId },
+      orderBy: { createdAt: "asc" },
+    });
   });
 
   const session = await db.session.create({
@@ -55,7 +57,6 @@ export async function getSessionByToken(db: PrismaClient, rawToken: string) {
     where: { tokenHash },
     include: {
       user: true,
-      selectedBusiness: true,
     },
   });
 
@@ -63,23 +64,48 @@ export async function getSessionByToken(db: PrismaClient, rawToken: string) {
   if (session.revokedAt !== null) return null;
   if (session.expiresAt <= now) return null;
 
-  // Retrieve user memberships
-  const memberships = await db.membership.findMany({
-    where: { userId: session.userId },
-    include: {
-      business: true,
-      location: true,
+  // Retrieve user memberships under user and selected business context
+  const memberships = await withTenantContext(
+    db,
+    {
+      userId: session.userId,
+      businessId: session.selectedBusinessId ?? undefined,
     },
-    orderBy: { createdAt: "asc" },
-  });
+    async (tx) => {
+      return await tx.membership.findMany({
+        where: { userId: session.userId },
+        include: {
+          business: true,
+          location: true,
+        },
+        orderBy: { createdAt: "asc" },
+      });
+    },
+  );
 
-  const activeMembership =
-    memberships.find((m) => m.businessId === session.selectedBusinessId) ??
-    memberships[0] ??
-    null;
+  let activeMembership = null;
+  let selectedBusinessId = session.selectedBusinessId;
+
+  if (selectedBusinessId) {
+    const matching = memberships.find((m) => m.businessId === selectedBusinessId) ?? null;
+    if (matching) {
+      activeMembership = matching;
+    } else {
+      // Finding 1: Revoked membership MUST remove business access.
+      // Never fall back to another business's membership while keeping old selectedBusinessId.
+      // Clear invalid business context and persist on session.
+      selectedBusinessId = null;
+      activeMembership = null;
+      await db.session.update({
+        where: { id: session.id },
+        data: { selectedBusinessId: null },
+      });
+    }
+  }
 
   return {
     ...session,
+    selectedBusinessId,
     memberships,
     activeMembership,
   };
@@ -93,10 +119,16 @@ export async function selectBusinessForSession(
   userId: string,
   businessId: string,
 ) {
-  // Verify membership
-  const membership = await db.membership.findFirst({
-    where: { userId, businessId },
-  });
+  // Verify membership under user context
+  const membership = await withTenantContext(
+    db,
+    { userId, businessId },
+    async (tx) => {
+      return await tx.membership.findFirst({
+        where: { userId, businessId },
+      });
+    },
+  );
 
   if (!membership) {
     throw new Error("User does not have access to this business");

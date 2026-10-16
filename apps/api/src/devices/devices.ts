@@ -67,20 +67,54 @@ export async function enrollDevice(
     actorUserId: string;
   },
 ) {
-  // Verify location exists within business
-  const location = await db.location.findFirst({
-    where: { id: opts.locationId, businessId: opts.businessId },
-  });
-  if (!location) {
-    throw new Error("Location does not exist in this business");
-  }
-
-  const prefix = await allocateNextPrefix(db, opts.businessId, opts.numberPrefix);
-
   return await withTenantContext(
     db,
     { businessId: opts.businessId, userId: opts.actorUserId },
     async (tx) => {
+      // Verify location exists within business
+      const location = await tx.location.findFirst({
+        where: { id: opts.locationId, businessId: opts.businessId },
+      });
+      if (!location) {
+        throw new Error("Location does not exist in this business");
+      }
+
+      // Allocate prefix inside transaction context
+      let prefix: string;
+      if (opts.numberPrefix) {
+        const formatted = opts.numberPrefix.trim().toUpperCase();
+        const existing = await tx.devicePrefixRegistry.findUnique({
+          where: {
+            businessId_numberPrefix: {
+              businessId: opts.businessId,
+              numberPrefix: formatted,
+            },
+          },
+        });
+        if (existing) {
+          throw new Error(`Device prefix '${formatted}' has already been used in this business`);
+        }
+        prefix = formatted;
+      } else {
+        const usedPrefixes = await tx.devicePrefixRegistry.findMany({
+          where: { businessId: opts.businessId },
+          select: { numberPrefix: true },
+        });
+        const usedSet = new Set(usedPrefixes.map((p) => p.numberPrefix));
+        let allocated: string | null = null;
+        for (let i = 1; i <= 999; i++) {
+          const candidate = `D${String(i).padStart(2, "0")}`;
+          if (!usedSet.has(candidate)) {
+            allocated = candidate;
+            break;
+          }
+        }
+        if (!allocated) {
+          throw new Error("Maximum device prefix allocation reached for business");
+        }
+        prefix = allocated;
+      }
+
       // Register prefix to guarantee it can never be reused
       await tx.devicePrefixRegistry.create({
         data: {
@@ -185,41 +219,41 @@ export async function issueOfflineLease(
     durationHours?: number;
   },
 ) {
-  const device = await db.deviceEnrollment.findFirst({
-    where: {
-      id: opts.deviceEnrollmentId,
-      businessId: opts.businessId,
-    },
-  });
-
-  if (!device || device.status !== "Enrolled") {
-    throw new Error("Cannot issue lease for an unenrolled or revoked device");
-  }
-
-  const business = await db.business.findUniqueOrThrow({
-    where: { id: opts.businessId },
-  });
-
-  const membership = await db.membership.findFirstOrThrow({
-    where: { id: opts.membershipId, businessId: opts.businessId },
-  });
-
-  const hours = opts.durationHours ?? DEFAULT_LEASE_HOURS;
-  const expiresAt = new Date(Date.now() + hours * 60 * 60 * 1000);
-
-  const signature = generateLeaseSignature(leaseSecret, {
-    businessId: opts.businessId,
-    deviceEnrollmentId: opts.deviceEnrollmentId,
-    membershipId: opts.membershipId,
-    datasetEpoch: business.datasetEpoch,
-    policyVersion: membership.permissionVersion,
-    expiresAt,
-  });
-
   return await withTenantContext(
     db,
     { businessId: opts.businessId },
     async (tx) => {
+      const device = await tx.deviceEnrollment.findFirst({
+        where: {
+          id: opts.deviceEnrollmentId,
+          businessId: opts.businessId,
+        },
+      });
+
+      if (!device || device.status !== "Enrolled") {
+        throw new Error("Cannot issue lease for an unenrolled or revoked device");
+      }
+
+      const business = await tx.business.findUniqueOrThrow({
+        where: { id: opts.businessId },
+      });
+
+      const membership = await tx.membership.findFirstOrThrow({
+        where: { id: opts.membershipId, businessId: opts.businessId },
+      });
+
+      const hours = opts.durationHours ?? DEFAULT_LEASE_HOURS;
+      const expiresAt = new Date(Date.now() + hours * 60 * 60 * 1000);
+
+      const signature = generateLeaseSignature(leaseSecret, {
+        businessId: opts.businessId,
+        deviceEnrollmentId: opts.deviceEnrollmentId,
+        membershipId: opts.membershipId,
+        datasetEpoch: business.datasetEpoch,
+        policyVersion: membership.permissionVersion,
+        expiresAt,
+      });
+
       return await tx.offlineLease.create({
         data: {
           businessId: opts.businessId,

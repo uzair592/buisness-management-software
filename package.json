@@ -17,7 +17,8 @@
     "test:e2e": "playwright test",
     "check": "pnpm lint && pnpm typecheck && pnpm build && pnpm test",
     "db:generate": "pnpm --filter @business/db generate",
-    "db:migrate": "pnpm --filter @business/db migrate"
+    "db:provision": "pnpm --filter @business/db provision",
+    "db:migrate": "pnpm db:provision && pnpm --filter @business/db migrate"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.0",

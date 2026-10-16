@@ -8,7 +8,10 @@ test(
   "compiled API starts and serves real DB readiness",
   { timeout: 45000 },
   async (t) => {
-    assert.ok(process.env.DATABASE_URL, "Set DATABASE_URL to real PostgreSQL");
+    const dbUrl =
+      process.env.DATABASE_URL ||
+      "postgresql://bms_local:bms_local@127.0.0.1:5432/bms?schema=public";
+    assert.ok(dbUrl, "Set DATABASE_URL to real PostgreSQL");
     const portProbe = createServer();
     portProbe.listen(0, "127.0.0.1");
     await once(portProbe, "listening");
@@ -21,6 +24,7 @@ test(
     const child = spawn(process.execPath, ["apps/api/dist/server.js"], {
       env: {
         ...process.env,
+        DATABASE_URL: dbUrl,
         NODE_ENV: "test",
         HOST: "127.0.0.1",
         PORT: String(port),

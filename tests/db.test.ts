@@ -4,11 +4,14 @@ import { createDatabase } from "../packages/db/src/index";
 import { createApp } from "../apps/api/src/app";
 
 test("real PostgreSQL readiness, outage and recovery", async () => {
+  const dbUrl =
+    process.env.DATABASE_URL ||
+    "postgresql://bms_local:bms_local@127.0.0.1:5432/bms?schema=public";
   assert.ok(
-    process.env.DATABASE_URL,
+    dbUrl,
     "Set DATABASE_URL to an actual PostgreSQL instance",
   );
-  const good = createDatabase(process.env.DATABASE_URL);
+  const good = createDatabase(dbUrl);
   const bad = createDatabase(
     "postgresql://unavailable:unavailable@127.0.0.1:1/bms?connect_timeout=1",
   );

@@ -4,11 +4,11 @@ interface RateLimitEntry {
 }
 
 const WINDOW_MS = 60 * 1000; // 1 minute
-const MAX_FAILURES = 5;
+const DEFAULT_MAX_FAILURES = 5;
 
 const attempts = new Map<string, RateLimitEntry>();
 
-export function isRateLimited(key: string): boolean {
+export function isRateLimited(key: string, maxFailures = DEFAULT_MAX_FAILURES): boolean {
   const now = Date.now();
   const entry = attempts.get(key);
   if (!entry) return false;
@@ -18,7 +18,7 @@ export function isRateLimited(key: string): boolean {
     return false;
   }
 
-  return entry.failures >= MAX_FAILURES;
+  return entry.failures >= maxFailures;
 }
 
 export function recordFailedAttempt(key: string): void {
@@ -37,4 +37,8 @@ export function recordFailedAttempt(key: string): void {
 
 export function resetRateLimit(key: string): void {
   attempts.delete(key);
+}
+
+export function clearAllRateLimits(): void {
+  attempts.clear();
 }
