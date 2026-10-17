@@ -1,6 +1,7 @@
 // Narrow exact arithmetic primitives retained for the isolated sample preview.
 // Versioned operational calculations are exported from calculation.ts.
 export * from "./calculation.js";
+export * from "./sync-dependencies.js";
 function scaled(value: string, scale: number): bigint {
   if (!new RegExp(`^\\d+(?:\\.\\d{1,${scale}})?$`).test(value)) {
     throw new Error(

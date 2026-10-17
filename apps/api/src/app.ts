@@ -17,7 +17,8 @@ import {
   ROLE_CAPABILITIES,
   type Role,
 } from "@business/contracts";
-import { type Prisma, type PrismaClient, withBusinessChange, withTenantContext } from "@business/db";
+import { type Prisma, type PrismaClient, ChangedCommandError, withBusinessChange, withTenantContext } from "@business/db";
+import { openingInput, prepareOpening, commitOpening, systemAccounts, OpeningConflict } from "./opening.js";
 import { hashPassword, verifyPassword } from "./auth/password.js";
 import {
   createSession,
@@ -827,7 +828,7 @@ export function createApp(
       return reply.code(400).send({ error: "deviceEnrollmentId query parameter required" });
     }
 
-    const { device, business, locations, existingLease } = await withTenantContext(
+    const { device, business, locations, existingLease, catalogue, syncCursor } = await withTenantContext(
       client,
       { businessId: tenant.businessId, userId: request.user.id },
       async (tx) => {
@@ -861,8 +862,34 @@ export function createApp(
           },
           orderBy: { issuedAt: "desc" },
         });
+        // Capture the floor before reading models: concurrent later changes can be replayed by pull.
+        const syncHead = await tx.syncHead.findUnique({ where: { businessId: tenant.businessId } });
 
-        return { device: d, business: b, locations: locs, existingLease: l };
+        const [items, parties, categories, units, taxProfiles, conversions] = await Promise.all([
+          tx.item.findMany({ where: { businessId: tenant.businessId, archivedAt: null },
+            select: { id: true, kind: true, name: true, sku: true, barcode: true, salePrice: true,
+              categoryId: true, baseUnitId: true, taxProfileId: true, version: true } }),
+          tx.party.findMany({ where: { businessId: tenant.businessId, archivedAt: null },
+            select: { id: true, name: true, isCustomer: true, isSupplier: true, phone: true, email: true, version: true } }),
+          tx.category.findMany({ where: { businessId: tenant.businessId, archivedAt: null },
+            select: { id: true, name: true, version: true } }),
+          tx.unit.findMany({ where: { businessId: tenant.businessId, archivedAt: null },
+            select: { id: true, code: true, name: true, version: true } }),
+          tx.taxProfile.findMany({ where: { businessId: tenant.businessId, archivedAt: null },
+            select: { id: true, name: true, rate: true, mode: true, version: true } }),
+          tx.itemUnitConversion.findMany({ where: { businessId: tenant.businessId, archivedAt: null },
+            select: { id: true, itemId: true, unitId: true, factor: true, version: true } }),
+        ]);
+        const accountSetup = ["Owner", "Accountant"].includes(tenant.membership.role) ? {
+          accounts: await tx.account.findMany({ where: { businessId: tenant.businessId, archivedAt: null },
+            select: { id: true, code: true, name: true, kind: true, classification: true,
+              expenseCategoryId: true, version: true } }),
+          expenseCategories: await tx.expenseCategory.findMany({ where: { businessId: tenant.businessId, archivedAt: null },
+            select: { id: true, name: true, version: true } }),
+        } : null;
+        return { device: d, business: b, locations: locs, existingLease: l,
+          syncCursor: (syncHead?.committedCursor ?? 0n).toString(),
+          catalogue: { items, parties, categories, units, taxProfiles, conversions, accountSetup } };
       },
     );
 
@@ -944,11 +971,80 @@ export function createApp(
         code: loc.code,
         name: loc.name,
       })),
+      catalogue,
+      syncCursor,
       rolePermissions: {
         role,
         capabilities,
       },
     });
+  });
+
+  app.get("/v1/sync/pull", async (request, reply) => {
+    if (!requireAuth(request, reply)) return;
+    const tenant = requireTenantContext(request, reply);
+    if (!tenant) return;
+    const parsed = z.object({ deviceEnrollmentId: z.uuid(), afterCursor: z.string().regex(/^\d{1,19}$/),
+      limit: z.coerce.number().int().min(1).max(100).default(50) }).safeParse(request.query);
+    if (!parsed.success) return reply.code(400).send({ error: "Invalid pull cursor or device" });
+    const { deviceEnrollmentId, afterCursor, limit } = parsed.data;
+    const after = BigInt(afterCursor);
+    const result = await withTenantContext(requireDb(), { businessId: tenant.businessId, userId: request.user.id }, async (tx) => {
+      const device = await tx.deviceEnrollment.findFirst({ where: { id: deviceEnrollmentId,
+        businessId: tenant.businessId, membershipId: tenant.membership.id, status: "Enrolled" } });
+      if (!device || (tenant.membership.locationId && tenant.membership.role !== "Owner" && device.locationId !== tenant.membership.locationId)) return null;
+      const head = await tx.syncHead.findUnique({ where: { businessId: tenant.businessId } });
+      const committedCursor = head?.committedCursor ?? 0n;
+      const epoch = head?.datasetEpoch ?? (await tx.business.findUniqueOrThrow({ where: { id: tenant.businessId } })).datasetEpoch;
+      if (after > committedCursor) return { invalidCursor: true };
+      const batches = await tx.changeBatch.findMany({ where: { businessId: tenant.businessId,
+        datasetEpoch: epoch, cursor: { gt: after } }, orderBy: { cursor: "asc" }, take: limit });
+      const privileged = ["Owner", "Accountant"].includes(tenant.membership.role);
+      const changes = [];
+      for (const batch of batches) {
+        const payload = batch.payload as Record<string, unknown>;
+        const action = typeof payload.action === "string" ? payload.action : "";
+        const id = typeof payload.id === "string" ? payload.id : "";
+        if (action === "account.system_init" && privileged) {
+          const rows = await tx.account.findMany({ where: { businessId: tenant.businessId,
+            code: { in: systemAccounts.map((account) => account.code) } },
+            select: { id: true, code: true, name: true, kind: true, classification: true,
+              expenseCategoryId: true, version: true, archivedAt: true } });
+          changes.push({ cursor: batch.cursor.toString(), action, row: { accounts: rows } });
+          continue;
+        }
+        if (!id) continue;
+        const group = action.split(".")[0];
+        if (["account", "expense_category"].includes(group) && !privileged) continue;
+        const where = { id, businessId: tenant.businessId };
+        let row: Record<string, unknown> | null = null;
+        if (group === "item") row = await tx.item.findFirst({ where,
+          select: { id: true, name: true, kind: true, sku: true, barcode: true, salePrice: true,
+            categoryId: true, baseUnitId: true, taxProfileId: true, version: true, archivedAt: true } });
+        else if (group === "party") row = await tx.party.findFirst({ where,
+          select: { id: true, name: true, isCustomer: true, isSupplier: true, phone: true, email: true, version: true, archivedAt: true } });
+        else if (group === "category") row = await tx.category.findFirst({ where,
+          select: { id: true, name: true, version: true, archivedAt: true } });
+        else if (group === "unit") row = await tx.unit.findFirst({ where,
+          select: { id: true, name: true, code: true, version: true, archivedAt: true } });
+        else if (group === "tax_profile") row = await tx.taxProfile.findFirst({ where,
+          select: { id: true, name: true, rate: true, mode: true, version: true, archivedAt: true } });
+        else if (group === "conversion") row = await tx.itemUnitConversion.findFirst({ where,
+          select: { id: true, itemId: true, unitId: true, factor: true, version: true, archivedAt: true } });
+        else if (group === "account" && privileged) row = await tx.account.findFirst({ where,
+          select: { id: true, code: true, name: true, kind: true, classification: true,
+            expenseCategoryId: true, version: true, archivedAt: true } });
+        else if (group === "expense_category" && privileged) row = await tx.expenseCategory.findFirst({ where,
+          select: { id: true, name: true, version: true, archivedAt: true } });
+        if (row) changes.push({ cursor: batch.cursor.toString(), action, row });
+      }
+      const nextCursor = (batches.at(-1)?.cursor ?? after).toString();
+      return { datasetEpoch: epoch, fromCursor: afterCursor, nextCursor,
+        committedCursor: committedCursor.toString(), hasMore: BigInt(nextCursor) < committedCursor, changes };
+    });
+    if (!result) return reply.code(403).send({ error: "Device is not enrolled for this membership" });
+    if ("invalidCursor" in result) return reply.code(400).send({ error: "Cursor is ahead of this business" });
+    return result;
   });
 
   // --- M04 persisted master data (financial posting remains in the journal dispatcher) ---
@@ -1195,6 +1291,166 @@ export function createApp(
       if (error instanceof Error && error.message === "VERSION_CONFLICT") return reply.code(409).send({ error: "Item changed on another device; reload and review your edits" });
       if (error instanceof Error && error.message === "INVALID_ITEM_REFERENCE") return reply.code(400).send({ error: "Catalogue reference is missing or archived in this business" });
       if (typeof error === "object" && error && "code" in error && error.code === "P2002") return reply.code(409).send({ error: "SKU or barcode already exists in this business" });
+      throw error;
+    }
+  });
+
+  // Account setup never accepts an opening balance: money is introduced only by a posting.
+  const accountInput = z.object({
+    code: z.string().trim().min(1).max(50).regex(/^[A-Za-z0-9_-]+$/),
+    name: z.string().trim().min(1).max(120),
+    kind: z.enum(["Cash", "Bank", "Expense"]),
+    expenseCategoryId: z.uuid().nullable().default(null),
+  }).strict().refine((value) => (value.kind === "Expense") === (value.expenseCategoryId !== null),
+    "Expense accounts require an expense category; other accounts cannot use one")
+    .refine((value) => !value.code.startsWith("OPEN_"), "System account codes are reserved");
+  const expenseCategoryInput = z.object({ name: z.string().trim().min(1).max(120) });
+
+  function accountContext(request: FastifyRequest, reply: FastifyReply, write: boolean) {
+    if (!requireAuth(request, reply)) return null;
+    const tenant = requireTenantContext(request, reply);
+    if (!tenant) return null;
+    if (!["Owner", "Accountant"].includes(tenant.membership.role)) {
+      void reply.code(403).send({ error: "Account access requires owner or accountant" });
+      return null;
+    }
+    if (write && !verifyCsrf(request, reply)) return null;
+    return { businessId: tenant.businessId, userId: request.user.id };
+  }
+
+  app.get("/v1/accounts/setup", async (request, reply) => {
+    const tenant = accountContext(request, reply, false);
+    if (!tenant) return;
+    return withTenantContext(requireDb(), tenant, async (tx) => ({
+      accounts: await tx.account.findMany({ where: { businessId: tenant.businessId, archivedAt: null }, orderBy: { code: "asc" } }),
+      expenseCategories: await tx.expenseCategory.findMany({ where: { businessId: tenant.businessId, archivedAt: null }, orderBy: { name: "asc" } }),
+    }));
+  });
+
+  app.post("/v1/accounts/expense-categories", async (request, reply) => {
+    const tenant = accountContext(request, reply, true);
+    if (!tenant) return;
+    const parsed = expenseCategoryInput.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: "Invalid expense category" });
+    try {
+      const id = crypto.randomUUID();
+      const row = await withBusinessChange(requireDb(), tenant.businessId, tenant.userId, "expense_category.create", async (tx) => {
+        const result = await tx.expenseCategory.create({ data: { id, businessId: tenant.businessId, name: parsed.data.name } });
+        return { result, change: { id, version: 1 } };
+      });
+      return reply.code(201).send(row);
+    } catch (error) {
+      if (typeof error === "object" && error && "code" in error && error.code === "P2002") return reply.code(409).send({ error: "Expense category name already exists" });
+      throw error;
+    }
+  });
+
+  app.post("/v1/accounts", async (request, reply) => {
+    const tenant = accountContext(request, reply, true);
+    if (!tenant) return;
+    const parsed = accountInput.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: "Invalid account", details: parsed.error.flatten() });
+    try {
+      const id = crypto.randomUUID();
+      const row = await withBusinessChange(requireDb(), tenant.businessId, tenant.userId, "account.create", async (tx) => {
+        if (parsed.data.expenseCategoryId && !await tx.expenseCategory.findFirst({ where: {
+          id: parsed.data.expenseCategoryId, businessId: tenant.businessId, archivedAt: null,
+        } })) throw new Error("INVALID_EXPENSE_CATEGORY");
+        const { kind, ...data } = parsed.data;
+        const result = await tx.account.create({ data: { id, businessId: tenant.businessId,
+          ...data, kind, classification: kind === "Expense" ? "Expense" : "Asset" } });
+        return { result, change: { id, version: 1 } };
+      });
+      return reply.code(201).send(row);
+    } catch (error) {
+      if (error instanceof Error && error.message === "INVALID_EXPENSE_CATEGORY") return reply.code(400).send({ error: "Expense category missing from this business" });
+      if (typeof error === "object" && error && "code" in error && error.code === "P2002") return reply.code(409).send({ error: "Account code already exists" });
+      throw error;
+    }
+  });
+
+  app.patch("/v1/accounts/:id", async (request, reply) => {
+    const tenant = accountContext(request, reply, true);
+    if (!tenant) return;
+    const params = idParam.safeParse(request.params);
+    const parsed = z.object({ name: z.string().trim().min(1).max(120), expectedVersion: z.number().int().positive(), archive: z.boolean().default(false) }).safeParse(request.body);
+    if (!params.success || !parsed.success) return reply.code(400).send({ error: "Invalid account edit" });
+    try {
+      return await withBusinessChange(requireDb(), tenant.businessId, tenant.userId, "account.edit", async (tx) => {
+        const changed = await tx.account.updateMany({ where: { id: params.data.id, businessId: tenant.businessId,
+          kind: { in: ["Cash", "Bank", "Expense"] }, version: parsed.data.expectedVersion, archivedAt: null },
+          data: { name: parsed.data.name, version: { increment: 1 },
+            ...(parsed.data.archive ? { archivedAt: new Date() } : {}) } });
+        if (!changed.count) throw new Error("VERSION_CONFLICT");
+        const result = await tx.account.findUniqueOrThrow({ where: { id: params.data.id } });
+        return { result, change: { id: result.id, version: result.version, archived: parsed.data.archive } };
+      });
+    } catch (error) {
+      if (error instanceof Error && error.message === "VERSION_CONFLICT") return reply.code(409).send({ error: "Account changed on another device; reload and review your edits" });
+      throw error;
+    }
+  });
+
+  app.post("/v1/accounts/system", async (request, reply) => {
+    const tenant = accountContext(request, reply, true);
+    if (!tenant) return;
+    const existing = await withTenantContext(requireDb(), tenant, async (tx) => tx.account.findMany({
+      where: { businessId: tenant.businessId, code: { in: systemAccounts.map((a) => a.code) } },
+    }));
+    if (existing.length === systemAccounts.length && systemAccounts.every((account) => existing.some((row) =>
+      row.code === account.code && row.kind === account.kind && row.classification === account.classification && !row.archivedAt))) return { accounts: existing };
+    try {
+      return await withBusinessChange(requireDb(), tenant.businessId, tenant.userId, "account.system_init", async (tx) => {
+        const rows = [];
+        for (const account of systemAccounts) {
+          const found = await tx.account.findFirst({ where: { businessId: tenant.businessId, code: account.code } });
+          if (found && (found.kind !== account.kind || found.classification !== account.classification || found.archivedAt)) throw new OpeningConflict("A reserved system account code has conflicting configuration");
+          rows.push(found ?? await tx.account.create({ data: { id: crypto.randomUUID(), businessId: tenant.businessId, ...account } }));
+        }
+        return { result: { accounts: rows }, change: { initialized: true } };
+      });
+    } catch (error) {
+      if (error instanceof OpeningConflict) return reply.code(409).send({ error: error.message });
+      throw error;
+    }
+  });
+
+  app.get("/v1/opening", async (request, reply) => {
+    const tenant = accountContext(request, reply, false);
+    if (!tenant) return;
+    return withTenantContext(requireDb(), tenant, async (tx) => tx.openingBatch.findFirst({
+      where: { businessId: tenant.businessId }, include: { documents: true },
+    }));
+  });
+
+  app.post("/v1/opening/preview", async (request, reply) => {
+    const tenant = accountContext(request, reply, true);
+    if (!tenant) return;
+    const parsed = openingInput.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: "Invalid opening batch", details: parsed.error.flatten() });
+    try {
+      const prepared = await prepareOpening(requireDb(), tenant.businessId, tenant.userId, parsed.data);
+      return { preview: prepared.preview, expectedCursor: prepared.expectedCursor };
+    } catch (error) {
+      if (error instanceof OpeningConflict) return reply.code(400).send({ error: error.message });
+      throw error;
+    }
+  });
+
+  app.post("/v1/opening/commit", async (request, reply) => {
+    const tenant = accountContext(request, reply, true);
+    if (!tenant) return;
+    const parsed = openingInput.extend({ expectedCursor: z.string().regex(/^\d+$/) }).safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: "Invalid opening batch", details: parsed.error.flatten() });
+    const { expectedCursor, ...input } = parsed.data;
+    try {
+      const result = await commitOpening(requireDb(), tenant.businessId, tenant.userId, input, expectedCursor);
+      return reply.code(201).send(result);
+    } catch (error) {
+      if (error instanceof OpeningConflict || error instanceof ChangedCommandError ||
+          (typeof error === "object" && error && "code" in error && error.code === "P2002")) {
+        return reply.code(409).send({ error: error instanceof Error ? error.message : "Opening batch already exists" });
+      }
       throw error;
     }
   });

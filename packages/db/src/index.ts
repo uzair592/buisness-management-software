@@ -37,3 +37,5 @@ export async function withTenantContext<T>(
 
 export * from "./generated/prisma/client.js";
 export { withBusinessChange } from "./business-change.js";
+export { postCommand, ChangedCommandError } from "./posting.js";
+export type { PostingCommand, PostingLine, PostingStockEffect, PostingResult } from "./posting.js";

@@ -15,6 +15,31 @@
 .live-unit-add { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; align-items: center; }
 .live-unit-add span { grid-column: 1 / -1; font-weight: 600; }
 @media (max-width: 540px) { .live-form { grid-template-columns: 1fr; } .live-form > * { grid-column: 1 / -1; } .live-dialog { padding: 16px; } }
+.account-setup { display: grid; grid-template-columns: minmax(0, 1fr); gap: 22px; min-width: 0; }
+.account-setup > * { min-width: 0; }
+.account-setup code { overflow-wrap: anywhere; }
+.account-setup h2 { font-size: 1.15rem; font-weight: 750; }
+.account-setup h3 { font-weight: 750; }
+.account-section-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 20px; }
+.account-section-head p { color: #65738a; font-size: .88rem; margin-top: 4px; }
+.account-inline-form { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; margin-top: 18px; padding-top: 18px; border-top: 1px solid #e6ebf1; }
+.account-inline-form label, .account-opening-form label { display: grid; gap: 5px; font-size: .84rem; font-weight: 650; color: #465670; min-width: 130px; flex: 1; }
+.account-inline-form .btn-primary, .account-inline-form .btn-secondary { white-space: nowrap; }
+.account-notice { padding: 12px 16px; border: 1px solid #b8e2ca; background: #f0fcf5; color: #17613b; border-radius: 10px; }
+.account-state { background: #eaf3ff; color: #17549c; border-radius: 100px; padding: 5px 11px; font-weight: 700; font-size: .8rem; white-space: nowrap; }
+.account-opening-form { display: grid; gap: 14px; }
+.account-opening-form > label { max-width: 220px; }
+.account-opening-row { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; background: #f8fafc; border: 1px solid #e5ebf2; border-radius: 12px; padding: 14px; }
+.account-opening-row label { min-width: 145px; }
+.account-opening-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.account-preview { border: 1px solid #b9d2f2; background: #f4f8ff; border-radius: 12px; padding: 18px; margin-top: 20px; display: grid; gap: 14px; }
+.account-preview p { color: #52627a; font-size: .86rem; }
+.account-preview .btn-primary { justify-self: start; }
+.account-system-prompt { background: #fff9eb; border: 1px solid #f0d89a; padding: 14px; border-radius: 10px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 18px; }
+.account-totals { display: grid; grid-template-columns: repeat(auto-fit, minmax(115px, 1fr)); gap: 10px; }
+.account-totals > div { background: white; border-radius: 8px; padding: 10px; display: grid; gap: 4px; text-transform: capitalize; }
+.account-totals span { color: #65738a; font-size: .8rem; }
+.account-totals strong { font-variant-numeric: tabular-nums; }
 @media (max-width: 540px) { .live-unit-add { grid-template-columns: 1fr; } }
 
 :root {

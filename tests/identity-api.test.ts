@@ -744,6 +744,7 @@ test("End-to-end identity, auth, rate-limiting, devices, and bootstrap API under
     headers: { cookie: charlieCookies },
   });
   assert.equal(charlieBootstrapRes.statusCode, 200);
+  assert.equal(charlieBootstrapRes.json().catalogue.accountSetup, null);
   assert.equal(
     charlieBootstrapRes.json().lease,
     null,
