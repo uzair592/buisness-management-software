@@ -9,6 +9,7 @@
     "provision": "tsx src/provision.ts",
     "migrate": "prisma migrate deploy",
     "status": "prisma migrate status",
+    "verify-history": "tsx src/verify-history.ts",
     "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit"
   },

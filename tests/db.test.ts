@@ -7,6 +7,7 @@ import crypto from "node:crypto";
 import { Client } from "pg";
 import { createDatabase } from "../packages/db/src/index";
 import { provisionDatabase } from "../packages/db/src/provision";
+import { verifyMigrationHistory } from "../packages/db/src/verify-history";
 import { createApp } from "../apps/api/src/app";
 
 test("real PostgreSQL readiness, outage and recovery", async () => {
@@ -104,6 +105,12 @@ test("fresh installation on arbitrarily named PostgreSQL database with custom ru
     // Verify bms_runtime can query tables under RLS
     const tableRes = await runtimeClient.query("SELECT COUNT(*) AS count FROM users;");
     assert.equal(tableRes.rows[0].count, "0");
+
+    assert.deepEqual(
+      await verifyMigrationHistory({ migrationUrl: arbitraryAdminUrl.toString() }),
+      [],
+      "Fresh installation must have matching applied migration files",
+    );
 
     await runtimeClient.end();
   } finally {
@@ -255,6 +262,17 @@ test("existing database upgrade path: PR #3 original migration, representative d
         originalChecksum,
         diskChecksum,
         "Disk checksum differs from original PR #3 checksum because PR #4 modified it in place",
+      );
+
+      assert.deepEqual(
+        await verifyMigrationHistory({ migrationUrl: existingAdminUrl.toString() }),
+        [{
+          migrationName: "20261015000000_init_identity_and_devices",
+          reason: "modified",
+          recordedChecksum: originalChecksum,
+          diskChecksum,
+        }],
+        "Read-only verification must flag the exact historical mismatch",
       );
 
       // 5. Verify all representative business data survived the upgrade intact
