@@ -142,11 +142,15 @@ test("existing database upgrade path: PR #3 original migration, representative d
     await dbClient.connect();
 
     try {
-      // 1. Fetch original PR #3 migration SQL from git commit ee0752f
-      const originalSql = execSync(
-        "git show ee0752f:packages/db/prisma/migrations/20261015000000_init_identity_and_devices/migration.sql",
-        { encoding: "utf-8" },
-      );
+      // 1. Fetch original PR #3 migration SQL from committed fixture (with git show fallback)
+      const fixturePath = path.resolve(process.cwd(), "tests/fixtures/pr3_m02_migration.sql");
+      const rawOriginalSql = fs.existsSync(fixturePath)
+        ? fs.readFileSync(fixturePath, "utf-8")
+        : execSync(
+            "git show ee0752f:packages/db/prisma/migrations/20261015000000_init_identity_and_devices/migration.sql",
+            { encoding: "utf-8" },
+          );
+      const originalSql = rawOriginalSql.replace(/\r\n/g, "\n");
       const originalChecksum = crypto
         .createHash("sha256")
         .update(originalSql)
