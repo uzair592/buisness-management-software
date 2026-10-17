@@ -5,8 +5,11 @@ import { atOrBelow, formatMoney, sumAmounts } from "@business/domain";
 import { usePreview } from "../preview/PreviewProvider";
 import { transactionDue } from "../preview/fixtures";
 import { TrySample } from "../components/PreviewActions";
+import { useAuth } from "../context/AuthContext";
+import { LiveDirectoryPage } from "./LiveDirectoryPage";
 export function DirectoryPage({ type }: { type: "items" | "parties" }) {
   const { sample, items, parties, transactions } = usePreview();
+  const { authenticated, selectedBusinessId } = useAuth();
   const [query, setQuery] = useState("");
   const [params, setParams] = useSearchParams();
   const low = params.get("filter") === "low";
@@ -19,6 +22,7 @@ export function DirectoryPage({ type }: { type: "items" | "parties" }) {
       (!low || atOrBelow(i.stock, i.reorder)),
   );
   const filteredParties = parties.filter((p) => matches(p.name + " " + p.type));
+  if (!sample && authenticated && selectedBusinessId) return <LiveDirectoryPage type={type} />;
   return (
     <>
       <div className="page-heading">

@@ -45,6 +45,11 @@ model Business {
   changeBatches          ChangeBatch[]
   stockMovements         StockMovement[]
   provisionalDeficits    ProvisionalDeficitCost[]
+  categories             Category[]
+  units                  Unit[]
+  taxProfiles            TaxProfile[]
+  items                  Item[]
+  parties                Party[]
 
   @@map("businesses")
 }
@@ -279,6 +284,8 @@ model StockMovement {
   business        Business    @relation(fields: [businessId], references: [id], onDelete: Restrict)
   sourceEvent     SourceEvent @relation(fields: [businessId, sourceEventId], references: [businessId, id], onDelete: Restrict)
   location        Location    @relation(fields: [businessId, locationId], references: [businessId, id], onDelete: Restrict)
+  itemId          String?     @map("item_id") @db.Uuid
+  item            Item?       @relation(fields: [businessId, itemId], references: [businessId, id], onDelete: Restrict)
 
   @@unique([businessId, sourceEventId, sourceLineId, movementKind, leg])
   @@index([businessId, locationId, createdAt], map: "stock_movements_by_location")
@@ -313,4 +320,118 @@ model ChangeBatch {
   @@id([businessId, datasetEpoch, cursor])
   @@unique([businessId, sourceEventId])
   @@map("change_batches")
+}
+
+model Category {
+  id         String    @id @db.Uuid
+  businessId String    @map("business_id") @db.Uuid
+  name       String    @db.VarChar(120)
+  version    Int       @default(1)
+  archivedAt DateTime? @map("archived_at") @db.Timestamptz
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  business   Business  @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  items      Item[]
+
+  @@unique([businessId, id])
+  @@unique([businessId, name])
+  @@map("categories")
+}
+
+model Unit {
+  id          String               @id @db.Uuid
+  businessId  String               @map("business_id") @db.Uuid
+  code        String               @db.VarChar(20)
+  name        String               @db.VarChar(80)
+  version     Int                  @default(1)
+  archivedAt  DateTime?            @map("archived_at") @db.Timestamptz
+  createdAt   DateTime             @default(now()) @map("created_at") @db.Timestamptz
+  business    Business             @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  baseItems   Item[]
+  conversions ItemUnitConversion[]
+
+  @@unique([businessId, id])
+  @@unique([businessId, code])
+  @@map("units")
+}
+
+model TaxProfile {
+  id         String    @id @db.Uuid
+  businessId String    @map("business_id") @db.Uuid
+  name       String    @db.VarChar(100)
+  rate       Decimal   @db.Decimal(9, 4)
+  mode       String    @db.VarChar(12)
+  version    Int       @default(1)
+  archivedAt DateTime? @map("archived_at") @db.Timestamptz
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  business   Business  @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  items      Item[]
+
+  @@unique([businessId, id])
+  @@unique([businessId, name])
+  @@map("tax_profiles")
+}
+
+model Item {
+  id             String               @id @db.Uuid
+  businessId     String               @map("business_id") @db.Uuid
+  categoryId     String?              @map("category_id") @db.Uuid
+  baseUnitId     String?              @map("base_unit_id") @db.Uuid
+  taxProfileId   String?              @map("tax_profile_id") @db.Uuid
+  kind           String               @db.VarChar(12)
+  name           String               @db.VarChar(160)
+  sku            String?              @db.VarChar(60)
+  barcode        String?              @db.VarChar(100)
+  salePrice      Decimal              @default(0) @map("sale_price") @db.Decimal(38, 2)
+  version        Int                  @default(1)
+  archivedAt     DateTime?            @map("archived_at") @db.Timestamptz
+  createdAt      DateTime             @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime             @updatedAt @map("updated_at") @db.Timestamptz
+  business       Business             @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  category       Category?            @relation(fields: [businessId, categoryId], references: [businessId, id], onDelete: Restrict)
+  baseUnit       Unit?                @relation(fields: [businessId, baseUnitId], references: [businessId, id], onDelete: Restrict)
+  taxProfile     TaxProfile?          @relation(fields: [businessId, taxProfileId], references: [businessId, id], onDelete: Restrict)
+  conversions    ItemUnitConversion[]
+  stockMovements StockMovement[]
+
+  @@unique([businessId, id])
+  @@unique([businessId, sku])
+  @@unique([businessId, barcode])
+  @@index([businessId, name, id], map: "items_search")
+  @@map("items")
+}
+
+model ItemUnitConversion {
+  id         String    @id @db.Uuid
+  businessId String    @map("business_id") @db.Uuid
+  itemId     String    @map("item_id") @db.Uuid
+  unitId     String    @map("unit_id") @db.Uuid
+  factor     Decimal   @db.Decimal(38, 6)
+  version    Int       @default(1)
+  archivedAt DateTime? @map("archived_at") @db.Timestamptz
+  item       Item      @relation(fields: [businessId, itemId], references: [businessId, id], onDelete: Restrict)
+  unit       Unit      @relation(fields: [businessId, unitId], references: [businessId, id], onDelete: Restrict)
+
+  @@unique([businessId, id])
+  @@unique([businessId, itemId, unitId])
+  @@map("item_unit_conversions")
+}
+
+model Party {
+  id         String    @id @db.Uuid
+  businessId String    @map("business_id") @db.Uuid
+  name       String    @db.VarChar(160)
+  isCustomer Boolean   @default(false) @map("is_customer")
+  isSupplier Boolean   @default(false) @map("is_supplier")
+  phone      String?   @db.VarChar(40)
+  email      String?   @db.VarChar(255)
+  version    Int       @default(1)
+  archivedAt DateTime? @map("archived_at") @db.Timestamptz
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  business   Business  @relation(fields: [businessId], references: [id], onDelete: Restrict)
+
+  @@unique([businessId, id])
+  @@index([businessId, name, id], map: "parties_search")
+  @@map("parties")
 }
