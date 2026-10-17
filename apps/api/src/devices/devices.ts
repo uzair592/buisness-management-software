@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { type PrismaClient, withTenantContext } from "@business/db";
+import { type PrismaClient, withBusinessChange } from "@business/db";
 
 const DEFAULT_LEASE_HOURS = 72;
 
@@ -67,9 +67,8 @@ export async function enrollDevice(
     actorUserId: string;
   },
 ) {
-  return await withTenantContext(
-    db,
-    { businessId: opts.businessId, userId: opts.actorUserId },
+  return await withBusinessChange(
+    db, opts.businessId, opts.actorUserId, "device.enrol",
     async (tx) => {
       // Verify location exists within business
       const location = await tx.location.findFirst({
@@ -148,7 +147,10 @@ export async function enrollDevice(
         },
       });
 
-      return enrollment;
+      return { result: enrollment, change: {
+        deviceEnrollmentId: enrollment.id, locationId: opts.locationId,
+        membershipId: opts.membershipId, status: "Enrolled",
+      } };
     },
   );
 }
@@ -162,9 +164,8 @@ export async function revokeDevice(
     reason?: string;
   },
 ) {
-  return await withTenantContext(
-    db,
-    { businessId: opts.businessId, userId: opts.actorUserId },
+  return await withBusinessChange(
+    db, opts.businessId, opts.actorUserId, "device.revoke",
     async (tx) => {
       const device = await tx.deviceEnrollment.findFirst({
         where: { id: opts.deviceEnrollmentId, businessId: opts.businessId },
@@ -204,7 +205,7 @@ export async function revokeDevice(
         },
       });
 
-      return updated;
+      return { result: updated, change: { deviceEnrollmentId: updated.id, status: "Revoked" } };
     },
   );
 }
@@ -216,12 +217,12 @@ export async function issueOfflineLease(
     businessId: string;
     deviceEnrollmentId: string;
     membershipId: string;
+    actorUserId: string;
     durationHours?: number;
   },
 ) {
-  return await withTenantContext(
-    db,
-    { businessId: opts.businessId },
+  return await withBusinessChange(
+    db, opts.businessId, opts.actorUserId, "device.lease_issue",
     async (tx) => {
       const device = await tx.deviceEnrollment.findFirst({
         where: {
@@ -245,6 +246,7 @@ export async function issueOfflineLease(
       const membership = await tx.membership.findFirstOrThrow({
         where: { id: opts.membershipId, businessId: opts.businessId },
       });
+      if (membership.userId !== opts.actorUserId) throw new Error("Lease actor does not own this membership");
 
       const hours = opts.durationHours ?? DEFAULT_LEASE_HOURS;
       const expiresAt = new Date(Date.now() + hours * 60 * 60 * 1000);
@@ -258,7 +260,7 @@ export async function issueOfflineLease(
         expiresAt,
       });
 
-      return await tx.offlineLease.create({
+      const lease = await tx.offlineLease.create({
         data: {
           businessId: opts.businessId,
           deviceEnrollmentId: opts.deviceEnrollmentId,
@@ -269,6 +271,10 @@ export async function issueOfflineLease(
           signature,
         },
       });
+      return { result: lease, change: {
+        offlineLeaseId: lease.id, deviceEnrollmentId: opts.deviceEnrollmentId,
+        expiresAt: expiresAt.toISOString(),
+      } };
     },
   );
 }

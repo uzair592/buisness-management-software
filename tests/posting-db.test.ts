@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
-import { createDatabase, withTenantContext } from "../packages/db/src/index";
+import { createDatabase, withBusinessChange, withTenantContext } from "../packages/db/src/index";
 import { ChangedCommandError, postCommand, type PostingCommand } from "../packages/db/src/posting";
 
 const uuid = () => crypto.randomUUID();
@@ -110,4 +110,33 @@ test("M03 posting: restricted role, replay, rollback, journal guard and commit-o
   assert.deepEqual(changes.map((c) => c.cursor.toString()), ["1", "2", "3"]);
   assert.equal(changes[1].sourceEventId, delayed.sourceEventId);
   assert.equal(changes[2].sourceEventId, later.sourceEventId);
+
+  let releaseConfig!: () => void;
+  let configLocked!: () => void;
+  const configGate = new Promise<void>((resolve) => { releaseConfig = resolve; });
+  const configStarted = new Promise<void>((resolve) => { configLocked = resolve; });
+  const configWrite = withBusinessChange(runtime, a.businessId, a.userId, "business.rename", async (tx) => {
+    configLocked();
+    await configGate;
+    const business = await tx.business.update({ where: { id: a.businessId }, data: { name: "Renamed" } });
+    return { result: business.name, change: { name: business.name } };
+  });
+  await configStarted;
+  const afterConfig = command("50.00");
+  let postingFinished = false;
+  const posting = postCommand(runtime, afterConfig).then((result) => { postingFinished = true; return result; });
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    assert.equal(postingFinished, false, "Journal posting must wait for a configuration change");
+  } finally {
+    releaseConfig();
+  }
+  const [renamed, fourth] = await Promise.all([configWrite, posting]);
+  assert.equal(renamed, "Renamed");
+  assert.equal(fourth.cursor, "5");
+  const allChanges = await withTenantContext(runtime, { businessId: a.businessId, userId: a.userId }, async (tx) =>
+    tx.changeBatch.findMany({ where: { businessId: a.businessId }, orderBy: { cursor: "asc" } }));
+  assert.deepEqual(allChanges.map((c) => c.cursor.toString()), ["1", "2", "3", "4", "5"]);
+  assert.equal((allChanges[3].payload as { action: string }).action, "business.rename");
+  assert.equal(allChanges[4].sourceEventId, afterConfig.sourceEventId);
 });

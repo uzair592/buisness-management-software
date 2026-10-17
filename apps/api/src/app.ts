@@ -792,6 +792,7 @@ export function createApp(
         businessId: tenant.businessId,
         deviceEnrollmentId: parseRes.data.deviceEnrollmentId,
         membershipId: tenant.membership.id,
+        actorUserId: request.user.id,
       });
 
       return reply.code(200).send({
@@ -890,6 +891,7 @@ export function createApp(
           businessId: tenant.businessId,
           deviceEnrollmentId,
           membershipId: tenant.membership.id,
+          actorUserId: request.user.id,
         });
       }
     }
