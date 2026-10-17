@@ -8,7 +8,7 @@ Last planning update: 2026-10-15.
 | M01 Foundation | Complete; PR #1 merged | Workspace, responsive shell, PostgreSQL readiness and [M01 evidence](docs/evidence/m01/README.md); UI prototype gate only |
 | M01 UI refinement | Complete; PR #2 merged | [Screenshots and original checks](docs/evidence/m01-ui-refinement/README.md); [filter-race repair and passing CI](docs/evidence/m01-ui-refinement/ci-filter-fix.md); isolated sample interactions only |
 | M02 Identity and devices | Core complete; PR #3 and #4 merged; migration history verification PR review pending | [M02 evidence](docs/evidence/m02/README.md); Prisma 7 prerequisite, global username auth, PostgreSQL RLS under restricted `bms_runtime`, composite FKs, device enrolment/signed leases, partitioned IndexedDB bootstrap, verified upgrade and fresh installation paths; historical checksum mismatch remains for upgraded PR #3 databases |
-| M03 Domain and journal | In progress on a branch stacked on PR #5 | Versioned decimal calculation engine, draft posting schema/dispatcher and real PostgreSQL acceptance tests; review and CI pending |
+| M03 Domain and journal | In progress on draft PR #6, stacked on PR #5 | Versioned decimal calculation engine, posting schema/dispatcher and real PostgreSQL acceptance tests; [initial PR CI passed](https://github.com/uzair592/buisness-management-software/actions/runs/39000385837); acceptance review remains |
 | M04 Catalogue and opening balances | Not started | — |
 | M05 First sale | Not started | — |
 | M06 Offline and two-device sync | Not started | — |
@@ -25,7 +25,7 @@ Last planning update: 2026-10-15.
 
 Review the M02 migration history verification PR and finish the stacked [Milestone 03: Domain and journal](prompts/03-domain-and-journal.md) acceptance gates. M02 establishes username authentication, database/API tenant isolation under a restricted role, device enrolment, signed leases, and local IndexedDB partitioning; it does not claim offline billing, accounting journals, or sync replication (scheduled for later milestones).
 
-M03 development is proceeding on a branch based on PR #5 while that PR is open. It will remain a draft stacked PR until the database posting tests and final CI pass; the M02 migration history limitation documented below still applies to databases created before PR #4.
+M03 development is proceeding on [draft PR #6](https://github.com/uzair592/buisness-management-software/pull/6), based on PR #5 while that PR is open. Its initial head passed PostgreSQL posting tests and final CI, but milestone acceptance remains open: earlier M02 business writers do not all use the business cursor protocol, full stock valuation and all accounting fixtures are not covered, and there is no operational sale. The M02 migration history limitation documented below still applies to databases created before PR #4.
 
 ## M01 implementation and evidence
 
