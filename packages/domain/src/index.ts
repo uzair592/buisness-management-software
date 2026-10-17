@@ -1,5 +1,6 @@
-// Narrow exact arithmetic primitives, shared by the isolated preview. This is
-// not the versioned tax/discount/posting calculation engine required by M03.
+// Narrow exact arithmetic primitives retained for the isolated sample preview.
+// Versioned operational calculations are exported from calculation.ts.
+export * from "./calculation.js";
 function scaled(value: string, scale: number): bigint {
   if (!new RegExp(`^\\d+(?:\\.\\d{1,${scale}})?$`).test(value)) {
     throw new Error(
