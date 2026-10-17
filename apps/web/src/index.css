@@ -15,7 +15,9 @@
 .live-unit-add { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; align-items: center; }
 .live-unit-add span { grid-column: 1 / -1; font-weight: 600; }
 @media (max-width: 540px) { .live-form { grid-template-columns: 1fr; } .live-form > * { grid-column: 1 / -1; } .live-dialog { padding: 16px; } }
-.account-setup { display: grid; gap: 22px; }
+.account-setup { display: grid; grid-template-columns: minmax(0, 1fr); gap: 22px; min-width: 0; }
+.account-setup > * { min-width: 0; }
+.account-setup code { overflow-wrap: anywhere; }
 .account-setup h2 { font-size: 1.15rem; font-weight: 750; }
 .account-setup h3 { font-weight: 750; }
 .account-section-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 20px; }
