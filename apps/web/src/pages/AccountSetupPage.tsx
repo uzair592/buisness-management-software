@@ -143,7 +143,7 @@ export function AccountSetupPage() {
             </tr>)}
           </Table>}
         <form className="account-inline-form" onSubmit={(event) => void createAccount(event)}>
-          <label>Code<input className="input" required maxLength={50} pattern="[A-Za-z0-9_-]+" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} placeholder="e.g. TILL" /></label>
+          <label>Code<input className="input" required maxLength={50} pattern="[A-Za-z0-9_\-]+" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} placeholder="e.g. TILL" /></label>
           <label>Name<input className="input" required maxLength={120} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Main till" /></label>
           <label>Type<select className="input" value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value })}><option>Cash</option><option>Bank</option><option>Expense</option></select></label>
           {form.kind === "Expense" && <label>Expense category<select className="input" required value={form.expenseCategoryId} onChange={(e) => setForm({ ...form, expenseCategoryId: e.target.value })}><option value="">Choose category</option>{categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>}

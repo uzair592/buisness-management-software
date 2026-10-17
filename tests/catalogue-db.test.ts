@@ -143,13 +143,38 @@ test("M04 catalogue persists, isolates tenants, enforces versions and sellable r
   assert.ok(bootstrap.json().catalogue.items.some((row: { id: string }) => row.id === item.json().id));
   assert.ok(bootstrap.json().catalogue.accountSetup.accounts.some((row: { id: string }) => row.id === cash.json().id));
   assert.ok(!/passwordHash|cost|profit/i.test(JSON.stringify(bootstrap.json().catalogue)));
+  assert.match(bootstrap.json().syncCursor, /^\d+$/);
+  const pullParty = await send(a, "POST", "/v1/catalogue/parties", {
+    ...partyData, name: "New customer after bootstrap",
+  });
+  assert.equal(pullParty.statusCode, 201, pullParty.body);
+  const pullAccount = await send(a, "POST", "/v1/accounts", { code: "PETTY", name: "Petty cash", kind: "Cash" });
+  assert.equal(pullAccount.statusCode, 201, pullAccount.body);
+  const ownerPull = await send(a, "GET", `/v1/sync/pull?deviceEnrollmentId=${enrolled.json().id}&afterCursor=${bootstrap.json().syncCursor}`);
+  assert.equal(ownerPull.statusCode, 200, ownerPull.body);
+  assert.ok(ownerPull.json().changes.some((change: { action: string; row: { id: string } }) => change.action === "party.create" && change.row.id === pullParty.json().id));
+  assert.ok(ownerPull.json().changes.some((change: { action: string; row: { id: string } }) => change.action === "account.create" && change.row.id === pullAccount.json().id));
+  const cashierPull = await send(cashier, "GET", `/v1/sync/pull?deviceEnrollmentId=${cashierDeviceId}&afterCursor=${cashierBootstrap.json().syncCursor}&limit=1`);
+  assert.equal(cashierPull.statusCode, 200, cashierPull.body);
+  let cursor = cashierPull.json().nextCursor as string;
+  const permitted = [...cashierPull.json().changes] as Array<{ action: string; row: { id: string } }>;
+  while (cashierPull.json().committedCursor !== cursor) {
+    const page = await send(cashier, "GET", `/v1/sync/pull?deviceEnrollmentId=${cashierDeviceId}&afterCursor=${cursor}&limit=1`);
+    assert.equal(page.statusCode, 200, page.body);
+    assert.notEqual(page.json().nextCursor, cursor);
+    permitted.push(...page.json().changes);
+    cursor = page.json().nextCursor;
+  }
+  assert.ok(permitted.some((change) => change.action === "party.create" && change.row.id === pullParty.json().id));
+  assert.ok(!/PETTY|Petty cash|classification|expenseCategory/i.test(JSON.stringify(permitted)));
+  assert.equal((await send(b, "GET", `/v1/sync/pull?deviceEnrollmentId=${cashierDeviceId}&afterCursor=0`)).statusCode, 403);
 
   const reloaded = await send(a, "GET", "/v1/catalogue/items?q=Mineral&page=1");
   assert.equal(reloaded.statusCode, 200, reloaded.body);
   assert.equal(reloaded.json().rows[0].version, 2);
   const changes = await withTenantContext(db, { businessId: a.id }, async (tx) =>
     tx.changeBatch.findMany({ where: { businessId: a.id }, orderBy: { cursor: "asc" } }));
-  assert.ok(changes.length >= 14);
+  assert.ok(changes.length >= 16);
   assert.deepEqual(changes.map((value) => value.cursor.toString()),
     Array.from({ length: changes.length }, (_, i) => String(i + 1)));
 });

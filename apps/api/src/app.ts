@@ -828,7 +828,7 @@ export function createApp(
       return reply.code(400).send({ error: "deviceEnrollmentId query parameter required" });
     }
 
-    const { device, business, locations, existingLease, catalogue } = await withTenantContext(
+    const { device, business, locations, existingLease, catalogue, syncCursor } = await withTenantContext(
       client,
       { businessId: tenant.businessId, userId: request.user.id },
       async (tx) => {
@@ -862,6 +862,8 @@ export function createApp(
           },
           orderBy: { issuedAt: "desc" },
         });
+        // Capture the floor before reading models: concurrent later changes can be replayed by pull.
+        const syncHead = await tx.syncHead.findUnique({ where: { businessId: tenant.businessId } });
 
         const [items, parties, categories, units, taxProfiles, conversions] = await Promise.all([
           tx.item.findMany({ where: { businessId: tenant.businessId, archivedAt: null },
@@ -886,6 +888,7 @@ export function createApp(
             select: { id: true, name: true, version: true } }),
         } : null;
         return { device: d, business: b, locations: locs, existingLease: l,
+          syncCursor: (syncHead?.committedCursor ?? 0n).toString(),
           catalogue: { items, parties, categories, units, taxProfiles, conversions, accountSetup } };
       },
     );
@@ -969,11 +972,79 @@ export function createApp(
         name: loc.name,
       })),
       catalogue,
+      syncCursor,
       rolePermissions: {
         role,
         capabilities,
       },
     });
+  });
+
+  app.get("/v1/sync/pull", async (request, reply) => {
+    if (!requireAuth(request, reply)) return;
+    const tenant = requireTenantContext(request, reply);
+    if (!tenant) return;
+    const parsed = z.object({ deviceEnrollmentId: z.uuid(), afterCursor: z.string().regex(/^\d{1,19}$/),
+      limit: z.coerce.number().int().min(1).max(100).default(50) }).safeParse(request.query);
+    if (!parsed.success) return reply.code(400).send({ error: "Invalid pull cursor or device" });
+    const { deviceEnrollmentId, afterCursor, limit } = parsed.data;
+    const after = BigInt(afterCursor);
+    const result = await withTenantContext(requireDb(), { businessId: tenant.businessId, userId: request.user.id }, async (tx) => {
+      const device = await tx.deviceEnrollment.findFirst({ where: { id: deviceEnrollmentId,
+        businessId: tenant.businessId, membershipId: tenant.membership.id, status: "Enrolled" } });
+      if (!device || (tenant.membership.locationId && tenant.membership.role !== "Owner" && device.locationId !== tenant.membership.locationId)) return null;
+      const head = await tx.syncHead.findUnique({ where: { businessId: tenant.businessId } });
+      const committedCursor = head?.committedCursor ?? 0n;
+      const epoch = head?.datasetEpoch ?? (await tx.business.findUniqueOrThrow({ where: { id: tenant.businessId } })).datasetEpoch;
+      if (after > committedCursor) return { invalidCursor: true };
+      const batches = await tx.changeBatch.findMany({ where: { businessId: tenant.businessId,
+        datasetEpoch: epoch, cursor: { gt: after } }, orderBy: { cursor: "asc" }, take: limit });
+      const privileged = ["Owner", "Accountant"].includes(tenant.membership.role);
+      const changes = [];
+      for (const batch of batches) {
+        const payload = batch.payload as Record<string, unknown>;
+        const action = typeof payload.action === "string" ? payload.action : "";
+        const id = typeof payload.id === "string" ? payload.id : "";
+        if (action === "account.system_init" && privileged) {
+          const rows = await tx.account.findMany({ where: { businessId: tenant.businessId,
+            code: { in: systemAccounts.map((account) => account.code) } },
+            select: { id: true, code: true, name: true, kind: true, classification: true,
+              expenseCategoryId: true, version: true, archivedAt: true } });
+          changes.push({ cursor: batch.cursor.toString(), action, row: { accounts: rows } });
+          continue;
+        }
+        if (!id) continue;
+        const group = action.split(".")[0];
+        if (["account", "expense_category"].includes(group) && !privileged) continue;
+        const where = { id, businessId: tenant.businessId };
+        let row: Record<string, unknown> | null = null;
+        if (group === "item") row = await tx.item.findFirst({ where,
+          select: { id: true, name: true, kind: true, sku: true, barcode: true, salePrice: true,
+            categoryId: true, baseUnitId: true, taxProfileId: true, version: true, archivedAt: true } });
+        else if (group === "party") row = await tx.party.findFirst({ where,
+          select: { id: true, name: true, isCustomer: true, isSupplier: true, phone: true, email: true, version: true, archivedAt: true } });
+        else if (group === "category") row = await tx.category.findFirst({ where,
+          select: { id: true, name: true, version: true, archivedAt: true } });
+        else if (group === "unit") row = await tx.unit.findFirst({ where,
+          select: { id: true, name: true, code: true, version: true, archivedAt: true } });
+        else if (group === "tax_profile") row = await tx.taxProfile.findFirst({ where,
+          select: { id: true, name: true, rate: true, mode: true, version: true, archivedAt: true } });
+        else if (group === "conversion") row = await tx.itemUnitConversion.findFirst({ where,
+          select: { id: true, itemId: true, unitId: true, factor: true, version: true, archivedAt: true } });
+        else if (group === "account" && privileged) row = await tx.account.findFirst({ where,
+          select: { id: true, code: true, name: true, kind: true, classification: true,
+            expenseCategoryId: true, version: true, archivedAt: true } });
+        else if (group === "expense_category" && privileged) row = await tx.expenseCategory.findFirst({ where,
+          select: { id: true, name: true, version: true, archivedAt: true } });
+        if (row) changes.push({ cursor: batch.cursor.toString(), action, row });
+      }
+      const nextCursor = (batches.at(-1)?.cursor ?? after).toString();
+      return { datasetEpoch: epoch, fromCursor: afterCursor, nextCursor,
+        committedCursor: committedCursor.toString(), hasMore: BigInt(nextCursor) < committedCursor, changes };
+    });
+    if (!result) return reply.code(403).send({ error: "Device is not enrolled for this membership" });
+    if ("invalidCursor" in result) return reply.code(400).send({ error: "Cursor is ahead of this business" });
+    return result;
   });
 
   // --- M04 persisted master data (financial posting remains in the journal dispatcher) ---

@@ -38,7 +38,7 @@ test("M04 owner can create and reload parties, services and opening at desktop a
   await page.getByLabel("Code").fill("TILL");
   await page.getByLabel("Name", { exact: true }).fill("Front till");
   await page.getByRole("button", { name: "Add account" }).click();
-  await expect(page.getByText("Front till")).toBeVisible();
+  await expect(page.getByRole("cell", { name: "Front till" })).toBeVisible();
   await page.getByRole("button", { name: "Initialize posting accounts" }).click();
   await page.getByLabel("Account").selectOption({ label: "Front till" });
   await page.getByLabel("Amount").fill("100.00");
@@ -48,7 +48,7 @@ test("M04 owner can create and reload parties, services and opening at desktop a
   await page.getByRole("button", { name: "Post opening batch" }).click();
   await expect(page.getByText("Opening batch recorded.", { exact: false })).toBeVisible();
   await page.reload();
-  await expect(page.getByText("Front till")).toBeVisible();
+  await expect(page.getByRole("cell", { name: "Front till" })).toBeVisible();
   await expect(page.getByText("Opening batch recorded.", { exact: false })).toBeVisible();
   const accountWidth = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, viewport: innerWidth }));
   expect(accountWidth.scroll).toBeLessThanOrEqual(accountWidth.viewport + 1);
