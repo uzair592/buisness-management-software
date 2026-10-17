@@ -7,7 +7,7 @@ Last planning update: 2026-10-15.
 | M00 Product plan and diagrams | Complete | Planning documents, 30 Mermaid sources and staged agent prompts in this repository |
 | M01 Foundation | Complete; PR #1 merged | Workspace, responsive shell, PostgreSQL readiness and [M01 evidence](docs/evidence/m01/README.md); UI prototype gate only |
 | M01 UI refinement | Complete; PR #2 merged | [Screenshots and original checks](docs/evidence/m01-ui-refinement/README.md); [filter-race repair and passing CI](docs/evidence/m01-ui-refinement/ci-filter-fix.md); isolated sample interactions only |
-| M02 Identity and devices | Complete; PR #3 merged; repair PR review pending | [M02 evidence](docs/evidence/m02/README.md); Prisma 7 prerequisite, global username auth, PostgreSQL RLS under restricted `bms_runtime`, composite FKs, device enrolment/signed leases, partitioned IndexedDB bootstrap |
+| M02 Identity and devices | Complete; PR #3 and #4 merged; migration history repair PR review pending | [M02 evidence](docs/evidence/m02/README.md); Prisma 7 prerequisite, global username auth, PostgreSQL RLS under restricted `bms_runtime`, composite FKs, device enrolment/signed leases, partitioned IndexedDB bootstrap, data-preserving migration reconciliation |
 | M03 Domain and journal | Not started | — |
 | M04 Catalogue and opening balances | Not started | — |
 | M05 First sale | Not started | — |
@@ -23,7 +23,7 @@ Last planning update: 2026-10-15.
 
 ## Next action
 
-Review and merge the Milestone 02 PR before starting [Milestone 03: Domain and journal](prompts/03-domain-and-journal.md). M02 establishes username authentication, database/API tenant isolation under a restricted role, device enrolment, signed leases, and local IndexedDB partitioning; it does not claim offline billing, accounting journals, or sync replication (scheduled for later milestones).
+Review and merge the M02 migration history repair PR before starting [Milestone 03: Domain and journal](prompts/03-domain-and-journal.md). M02 establishes username authentication, database/API tenant isolation under a restricted role, device enrolment, signed leases, and local IndexedDB partitioning; it does not claim offline billing, accounting journals, or sync replication (scheduled for later milestones).
 
 ## M01 implementation and evidence
 
@@ -100,6 +100,44 @@ Review and merge the Milestone 02 PR before starting [Milestone 03: Domain and j
 - Migration/Provisioning Instructions:
   - Run `pnpm db:provision` to create or update the `bms_runtime` role with dynamic permissions on the active database using `BMS_RUNTIME_PASSWORD`.
   - Run `pnpm db:migrate` (which runs provisioning followed by `prisma migrate deploy`).
+
+## M02 Migration History and Upgrade Verification Evidence
+
+- Branch: `fix/m02-migration-history-repair`, branched from `main` at `cda66ab398f72f43dfbcee273675c61016796636` (post-PR #4 merge).
+- Investigation of PR #3 (`ee0752f`) vs PR #4 migration modification:
+  - Original M02 migration `20261015000000_init_identity_and_devices/migration.sql` was merged in PR #3 with SHA-256 checksum `d536d3508b09f7209e77eefc23b7648ad998c22716772a12fc14e51c349e668e`.
+  - PR #4 modified lines 212 and 219 in place to replace `GRANT CONNECT ON DATABASE bms` with dynamic `EXECUTE format('GRANT CONNECT ON DATABASE %I TO bms_runtime', current_database())` and remove the default password from `CREATE ROLE bms_runtime`. This changed the file's SHA-256 checksum on disk to `116dbc0db6c72a71b8e662ca2fc861c6fbe08413dfef976d0bf102e113916c18`.
+- Path 1 reproduction (Existing database upgrade):
+  - Applied original PR #3 migration SQL (`ee0752f`) and seeded `_prisma_migrations` with `d536d3508b09f7209e77eefc23b7648ad998c22716772a12fc14e51c349e668e`.
+  - Inserted representative business records across `businesses`, `locations`, `users`, `memberships`, `device_prefix_registry`, `device_enrollments`, and `sessions`.
+  - Executed standard deployment upgrade command `pnpm db:migrate` (`prisma migrate deploy`) against current `main`.
+  - Observed that migration 2 (`20261016120000_repair_runtime_provisioning_and_isolation`) applied cleanly without error.
+  - Confirmed all representative data survived completely intact (1 business, 1 location, 1 user, 1 membership, 1 device, 1 session).
+  - Confirmed restricted role `bms_runtime` access remained functional under RLS.
+  - Verified `prisma migrate status` reported `Database schema is up to date!`.
+  - **Identified mismatch**: `_prisma_migrations` retained the PR #3 checksum (`d536...`) while the disk file has the PR #4 checksum (`116d...`). Running the development command `prisma migrate dev` detects that migration 1 was modified after it was applied and prompts for an unassisted schema reset (`We need to reset the "public" schema`).
+- Path 2 reproduction (Fresh database installation):
+  - Created an arbitrarily named PostgreSQL database without an extra `bms` database.
+  - Verified `provisionDatabase` rejects default passwords in production mode and provisions a secure custom password.
+  - Applied all migrations from scratch via `pnpm --filter @business/db exec prisma migrate deploy`. Confirmed all migrations succeed and `bms_runtime` connects and queries tables without requiring an extra `bms` database.
+- Data-preserving repair implementation:
+  - Created `packages/db/src/repair-history.ts` and root script `pnpm db:repair-history`.
+  - The repair script connects to the target database, inspects `_prisma_migrations`, and compares the recorded SHA-256 checksums against the on-disk `migration.sql` files.
+  - When a mismatch is found, it explicitly reports `[MIGRATION CHECKSUM MISMATCH DETECTED]` with both recorded and disk checksums (never concealing warnings).
+  - It non-destructively reconciles the checksum in `_prisma_migrations` without dropping schemas, resetting tables, or touching application data.
+  - Replaces error-prone manual psql updates with an automated, safe, tested operator command.
+  - Once reconciled, `prisma migrate dev` detects no drift and confirms: `Already in sync, no schema change or pending migration was found.`
+- Automated repeatable regression tests:
+  - Added comprehensive automated test in `tests/db.test.ts`: `existing database upgrade path: PR #3 original migration, representative data, migration deploy, and data-preserving history repair`. Tests the complete lifecycle from PR #3 migration, data seeding, upgrade deploy, checksum mismatch detection, automated repair, status verification, and data survival.
+  - Fresh database installation test retained and verified passing in `tests/db.test.ts`.
+- Full verification gate results:
+  - `pnpm check`: Passed (ESLint 10 with 0 warnings, TypeScript strict checking across contracts/db/domain/ui/api/web, API tsup build, Web Vite build, and 9 domain/decimal/local-db unit tests).
+  - `pnpm test:db`: Passed 5 real PostgreSQL test suites (`tests/db.test.ts`, `tests/db-isolation.test.ts`, `tests/identity-api.test.ts`).
+  - `pnpm test:runtime`: Passed compiled API server startup and DB readiness test.
+  - `pnpm test:e2e`: Passed all 13 Playwright browser E2E tests across 1366×768, 1920×1080, and 390×844 viewports.
+- Operator Upgrade Instructions:
+  - Existing databases: run `pnpm db:migrate`. If running in a development environment where `prisma migrate dev` is used, run `pnpm db:repair-history` once to reconcile the migration checksum history without resetting data.
+  - Fresh installations: configure `BMS_RUNTIME_PASSWORD` and run `pnpm db:migrate`.
 
 ## M00 validation
 
