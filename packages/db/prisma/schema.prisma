@@ -38,6 +38,7 @@ model Business {
   sessions               Session[]
   auditEvents            AuditEvent[]
   accounts               Account[]
+  expenseCategories      ExpenseCategory[]
   syncHead               SyncHead?
   commandReceipts        CommandReceipt[]
   sourceEvents           SourceEvent[]
@@ -182,13 +183,33 @@ model Account {
   code           String        @db.VarChar(50)
   classification String        @db.VarChar(30)
   name           String        @db.VarChar(120)
+  kind           String        @default("General") @db.VarChar(20)
+  expenseCategoryId String?     @map("expense_category_id") @db.Uuid
+  version        Int           @default(1)
+  archivedAt     DateTime?     @map("archived_at") @db.Timestamptz
   createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz
   business       Business      @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  expenseCategory ExpenseCategory? @relation(fields: [businessId, expenseCategoryId], references: [businessId, id], onDelete: Restrict)
   journalLines   JournalLine[]
 
   @@unique([businessId, id])
   @@unique([businessId, code])
   @@map("accounts")
+}
+
+model ExpenseCategory {
+  id         String    @id @db.Uuid
+  businessId String    @map("business_id") @db.Uuid
+  name       String    @db.VarChar(120)
+  version    Int       @default(1)
+  archivedAt DateTime? @map("archived_at") @db.Timestamptz
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  business   Business  @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  accounts   Account[]
+
+  @@unique([businessId, id])
+  @@unique([businessId, name])
+  @@map("expense_categories")
 }
 
 model SyncHead {

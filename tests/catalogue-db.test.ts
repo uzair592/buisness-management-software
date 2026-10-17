@@ -84,11 +84,37 @@ test("M04 catalogue persists, isolates tenants, enforces versions and sellable r
   assert.equal(archived.statusCode, 200, archived.body);
   assert.equal((await send(a, "GET", "/v1/catalogue/parties")).json().rows.length, 0);
 
+  const expenseCategory = await send(a, "POST", "/v1/accounts/expense-categories", { name: "Utilities" });
+  assert.equal(expenseCategory.statusCode, 201, expenseCategory.body);
+  const badExpense = await send(b, "POST", "/v1/accounts", { code: "EXP", name: "Electricity", kind: "Expense", expenseCategoryId: expenseCategory.json().id });
+  assert.equal(badExpense.statusCode, 400, badExpense.body);
+  const expense = await send(a, "POST", "/v1/accounts", { code: "EXP", name: "Electricity", kind: "Expense", expenseCategoryId: expenseCategory.json().id });
+  assert.equal(expense.statusCode, 201, expense.body);
+  const cash = await send(a, "POST", "/v1/accounts", { code: "CASH", name: "Till", kind: "Cash" });
+  assert.equal(cash.statusCode, 201, cash.body);
+  assert.equal(cash.json().classification, "Asset");
+  assert.equal((await send(a, "POST", "/v1/accounts", { code: "CASH", name: "Other till", kind: "Cash" })).statusCode, 409);
+  assert.equal((await send(a, "POST", "/v1/accounts", { code: "BANK", name: "Bank", kind: "Bank", balance: "500" })).statusCode, 400);
+  const bank = await send(a, "POST", "/v1/accounts", { code: "BANK", name: "Bank", kind: "Bank" });
+  assert.equal(bank.statusCode, 201, bank.body);
+  const renamed = await send(a, "PATCH", `/v1/accounts/${cash.json().id}`, { name: "Main till", expectedVersion: 1 });
+  assert.equal(renamed.statusCode, 200, renamed.body);
+  assert.equal(renamed.json().version, 2);
+  assert.equal((await send(a, "PATCH", `/v1/accounts/${cash.json().id}`, { name: "Stale", expectedVersion: 1 })).statusCode, 409);
+  assert.equal((await send(b, "PATCH", `/v1/accounts/${cash.json().id}`, { name: "Cross tenant", expectedVersion: 2 })).statusCode, 409);
+  assert.equal((await send(b, "GET", "/v1/accounts/setup")).json().accounts.length, 0);
+
   const cashierId = crypto.randomUUID();
+  const cashierMembershipId = crypto.randomUUID();
+  const cashierDeviceId = crypto.randomUUID();
+  const locationId = (await send(a, "GET", "/v1/locations")).json()[0].id as string;
   await withTenantContext(admin, { bypassRls: true }, async (tx) => {
     await tx.user.create({ data: { id: cashierId, username: `cashier_${unique}`,
       passwordHash: await hashPassword("CashierPassword123!"), fullName: "Cashier" } });
-    await tx.membership.create({ data: { businessId: a.id, userId: cashierId, role: "Cashier" } });
+    await tx.membership.create({ data: { id: cashierMembershipId, businessId: a.id, userId: cashierId, role: "Cashier" } });
+    await tx.devicePrefixRegistry.create({ data: { businessId: a.id, numberPrefix: "D98" } });
+    await tx.deviceEnrollment.create({ data: { id: cashierDeviceId, businessId: a.id, membershipId: cashierMembershipId,
+      locationId, deviceName: "Cashier catalogue test", numberPrefix: "D98", status: "Enrolled" } });
   });
   const login = await app.inject({ method: "POST", url: "/v1/auth/login", payload: {
     username: `cashier_${unique}`, password: "CashierPassword123!",
@@ -101,11 +127,27 @@ test("M04 catalogue persists, isolates tenants, enforces versions and sellable r
   assert.equal(sellable.json().rows.length, 1);
   assert.ok(!/cost|profit|passwordHash/i.test(JSON.stringify(sellable.json())));
   assert.equal((await send(cashier, "POST", "/v1/catalogue/parties", partyData)).statusCode, 403);
+  assert.equal((await send(cashier, "GET", "/v1/accounts/setup")).statusCode, 403);
+  assert.equal((await send(cashier, "POST", "/v1/accounts", { code: "BAD", name: "Bad", kind: "Cash" })).statusCode, 403);
+  const cashierBootstrap = await send(cashier, "GET", `/v1/sync/bootstrap?deviceEnrollmentId=${cashierDeviceId}`);
+  assert.equal(cashierBootstrap.statusCode, 200, cashierBootstrap.body);
+  assert.equal(cashierBootstrap.json().catalogue.accountSetup, null);
+  assert.ok(cashierBootstrap.json().catalogue.items.some((row: { id: string }) => row.id === item.json().id));
+  assert.ok(!/CASH|Electricity|expenseCategory|classification|cost|profit/i.test(JSON.stringify(cashierBootstrap.json().catalogue)));
+
+  const locations = await send(a, "GET", "/v1/locations");
+  const enrolled = await send(a, "POST", "/v1/devices/enroll", { deviceName: "Catalogue test", locationId: locations.json()[0].id });
+  assert.equal(enrolled.statusCode, 201, enrolled.body);
+  const bootstrap = await send(a, "GET", `/v1/sync/bootstrap?deviceEnrollmentId=${enrolled.json().id}`);
+  assert.equal(bootstrap.statusCode, 200, bootstrap.body);
+  assert.ok(bootstrap.json().catalogue.items.some((row: { id: string }) => row.id === item.json().id));
+  assert.ok(bootstrap.json().catalogue.accountSetup.accounts.some((row: { id: string }) => row.id === cash.json().id));
+  assert.ok(!/passwordHash|cost|profit/i.test(JSON.stringify(bootstrap.json().catalogue)));
 
   const reloaded = await send(a, "GET", "/v1/catalogue/items?q=Mineral&page=1");
   assert.equal(reloaded.statusCode, 200, reloaded.body);
   assert.equal(reloaded.json().rows[0].version, 2);
   const changes = await withTenantContext(db, { businessId: a.id }, async (tx) =>
     tx.changeBatch.findMany({ where: { businessId: a.id }, orderBy: { cursor: "asc" } }));
-  assert.deepEqual(changes.map((value) => value.cursor.toString()), ["1", "2", "3", "4", "5", "6", "7", "8", "9"]);
+  assert.deepEqual(changes.map((value) => value.cursor.toString()), Array.from({ length: 14 }, (_, i) => String(i + 1)));
 });
