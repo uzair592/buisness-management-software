@@ -122,10 +122,10 @@ export function AccountSetupPage() {
   }
 
   if (sample || !auth.authenticated || !auth.selectedBusinessId) return <>
-    <div className="page-heading"><div><p className="eyebrow">ACCOUNT SETUP</p><h1>Cash & bank</h1><p>Sign in to set up real accounts and opening balances.</p></div></div>
+    <div className="page-heading"><div><p className="eyebrow">ACCOUNT SETUP</p><h1>Cash & Bank</h1><p>Sign in to set up real accounts and opening balances.</p></div></div>
     <Panel><TrySample /></Panel>
   </>;
-  if (!allowed) return <><div className="page-heading"><div><h1>Cash & bank</h1></div></div>
+  if (!allowed) return <><div className="page-heading"><div><h1>Cash & Bank</h1></div></div>
     <Panel><p role="alert">Account books are available to owners and accountants.</p></Panel></>;
   return <div className="account-setup">
     <div className="page-heading"><div><p className="eyebrow">BUSINESS SETUP</p><h1>Accounts & opening</h1>
