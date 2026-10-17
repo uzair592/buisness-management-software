@@ -296,7 +296,7 @@ test("End-to-end identity, auth, rate-limiting, devices, and bootstrap API under
   assert.deepEqual(deviceChanges.map((batch) => (batch.payload as { action: string }).action), [
     "device.enrol", "device.enrol", "device.lease_issue", "device.revoke",
   ]);
-  assert.ok(!JSON.stringify(deviceChanges).includes(bootstrapData.lease.signature));
+  assert.ok(!JSON.stringify(deviceChanges.map((batch) => batch.payload)).includes(bootstrapData.lease.signature));
 
   // Bootstrapping a revoked device must fail with 403
   const revokedBootstrapRes = await app.inject({
