@@ -40,7 +40,7 @@ test("M04 owner can create and reload parties, services and opening at desktop a
   await page.getByRole("button", { name: "Add account" }).click();
   await expect(page.getByRole("cell", { name: "Front till" })).toBeVisible();
   await page.getByRole("button", { name: "Initialize posting accounts" }).click();
-  await page.getByLabel("Account").selectOption({ label: "Front till" });
+  await page.locator(".account-opening-form").getByLabel("Account", { exact: true }).selectOption({ label: "Front till" });
   await page.getByLabel("Amount").fill("100.00");
   await page.getByRole("button", { name: "Preview opening" }).click();
   await expect(page.getByRole("heading", { name: "Review before posting" })).toBeVisible();
