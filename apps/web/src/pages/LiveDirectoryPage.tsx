@@ -173,7 +173,7 @@ export function LiveDirectoryPage({ type }: { type: Kind }) {
           <label>Name<input className="input" data-dialog-autofocus required maxLength={160} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label>
           {type === "items" ? <>
             <label>Type<select className="input" value={form.kind} onChange={(event) => setForm({ ...form, kind: event.target.value as Form["kind"] })}><option>Service</option><option>Goods</option></select></label>
-            <label>Sale price<input className="input" required inputMode="decimal" pattern="[0-9]+(\\.[0-9]{1,2})?" value={form.salePrice} onChange={(event) => setForm({ ...form, salePrice: event.target.value })} /></label>
+            <label>Sale price<input className="input" required inputMode="decimal" pattern="[0-9]+([.][0-9]{1,2})?" value={form.salePrice} onChange={(event) => setForm({ ...form, salePrice: event.target.value })} /></label>
             <label>SKU<input className="input" maxLength={60} value={form.sku} onChange={(event) => setForm({ ...form, sku: event.target.value })} /></label>
             <label>Barcode<input className="input" maxLength={100} value={form.barcode} onChange={(event) => setForm({ ...form, barcode: event.target.value })} /></label>
             <label>Category<select className="input" value={form.categoryId} onChange={(event) => setForm({ ...form, categoryId: event.target.value })}><option value="">None</option>{setup.categories.map((choice) => <option key={choice.id} value={choice.id}>{choice.name}</option>)}</select></label>
