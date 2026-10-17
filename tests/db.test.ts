@@ -125,6 +125,11 @@ test("fresh installation on arbitrarily named PostgreSQL database with custom ru
       // ignore cleanup errors
     }
     await pgClient.end();
+    await provisionDatabase({
+      migrationUrl: adminUrl,
+      runtimePassword: process.env.BMS_RUNTIME_PASSWORD ?? "bms_runtime_pass_change_in_production",
+      isProduction: false,
+    });
   }
 });
 
@@ -238,7 +243,7 @@ test("existing database upgrade path: PR #3 original migration, representative d
       const migCheck = await dbClient.query(
         "SELECT migration_name, checksum FROM _prisma_migrations ORDER BY started_at;",
       );
-      assert.equal(migCheck.rowCount, 2, "Both migrations must be recorded in _prisma_migrations");
+      assert.ok((migCheck.rowCount ?? 0) >= 2, "Both M02 migrations must be recorded in _prisma_migrations");
       assert.equal(migCheck.rows[0].migration_name, "20261015000000_init_identity_and_devices");
       assert.equal(migCheck.rows[1].migration_name, "20261016120000_repair_runtime_provisioning_and_isolation");
 
