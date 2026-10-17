@@ -37,6 +37,14 @@ model Business {
   offlineLeases          OfflineLease[]
   sessions               Session[]
   auditEvents            AuditEvent[]
+  accounts               Account[]
+  syncHead               SyncHead?
+  commandReceipts        CommandReceipt[]
+  sourceEvents           SourceEvent[]
+  journalEntries         JournalEntry[]
+  changeBatches          ChangeBatch[]
+  stockMovements         StockMovement[]
+  provisionalDeficits    ProvisionalDeficitCost[]
 
   @@map("businesses")
 }
@@ -51,6 +59,7 @@ model Location {
   business          Business           @relation(fields: [businessId], references: [id], onDelete: Restrict)
   deviceEnrollments DeviceEnrollment[]
   memberships       Membership[]
+  stockMovements    StockMovement[]
 
   @@unique([businessId, id])
   @@unique([businessId, code])
@@ -111,6 +120,7 @@ model DeviceEnrollment {
   membership    Membership     @relation(fields: [businessId, membershipId], references: [businessId, id], onDelete: Restrict)
   location      Location       @relation(fields: [businessId, locationId], references: [businessId, id], onDelete: Restrict)
   offlineLeases OfflineLease[]
+  commandReceipts CommandReceipt[]
 
   @@unique([businessId, id])
   @@unique([businessId, numberPrefix])
@@ -159,4 +169,148 @@ model AuditEvent {
   user       User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@map("audit_events")
+}
+
+model Account {
+  id             String        @id @db.Uuid
+  businessId     String        @map("business_id") @db.Uuid
+  code           String        @db.VarChar(50)
+  classification String        @db.VarChar(30)
+  name           String        @db.VarChar(120)
+  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  business       Business      @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  journalLines   JournalLine[]
+
+  @@unique([businessId, id])
+  @@unique([businessId, code])
+  @@map("accounts")
+}
+
+model SyncHead {
+  businessId      String   @id @map("business_id") @db.Uuid
+  datasetEpoch    Int      @map("dataset_epoch")
+  committedCursor BigInt   @default(0) @map("committed_cursor") @db.BigInt
+  business        Business @relation(fields: [businessId], references: [id], onDelete: Restrict)
+
+  @@map("sync_heads")
+}
+
+model CommandReceipt {
+  businessId         String            @map("business_id") @db.Uuid
+  datasetEpoch       Int               @map("dataset_epoch")
+  commandId          String            @map("command_id") @db.Uuid
+  deviceEnrollmentId String?           @map("device_enrollment_id") @db.Uuid
+  payloadHash        String            @map("payload_hash") @db.Char(64)
+  outcome            String            @db.VarChar(30)
+  canonicalResult    Json              @map("canonical_result")
+  cursor             BigInt            @db.BigInt
+  acceptedAt         DateTime          @default(now()) @map("accepted_at") @db.Timestamptz
+  business           Business          @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  deviceEnrollment   DeviceEnrollment? @relation(fields: [businessId, deviceEnrollmentId], references: [businessId, id], onDelete: Restrict)
+
+  @@id([businessId, datasetEpoch, commandId])
+  @@map("command_receipts")
+}
+
+model SourceEvent {
+  id                  String                   @id @db.Uuid
+  businessId          String                   @map("business_id") @db.Uuid
+  commandId           String                   @map("command_id") @db.Uuid
+  effectKind          String                   @map("effect_kind") @db.VarChar(40)
+  businessDate        DateTime                 @map("business_date") @db.Date
+  acceptedAt          DateTime                 @default(now()) @map("accepted_at") @db.Timestamptz
+  business            Business                 @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  journalEntries      JournalEntry[]
+  stockMovements      StockMovement[]
+  provisionalDeficits ProvisionalDeficitCost[]
+  changeBatches       ChangeBatch[]
+
+  @@unique([businessId, id])
+  @@unique([businessId, commandId, effectKind])
+  @@map("source_events")
+}
+
+model JournalEntry {
+  id               String         @id @db.Uuid
+  businessId       String         @map("business_id") @db.Uuid
+  sourceEventId    String         @map("source_event_id") @db.Uuid
+  postingKind      String         @map("posting_kind") @db.VarChar(40)
+  businessDate     DateTime       @map("business_date") @db.Date
+  reversesEntryId  String?        @map("reverses_entry_id") @db.Uuid
+  createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz
+  business         Business       @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  sourceEvent      SourceEvent    @relation(fields: [businessId, sourceEventId], references: [businessId, id], onDelete: Restrict)
+  reversesEntry    JournalEntry?  @relation("JournalReversal", fields: [businessId, reversesEntryId], references: [businessId, id], onDelete: Restrict)
+  reversedBy       JournalEntry[] @relation("JournalReversal")
+  lines            JournalLine[]
+
+  @@unique([businessId, id])
+  @@unique([businessId, sourceEventId, postingKind])
+  @@map("journal_entries")
+}
+
+model JournalLine {
+  id             String       @id @db.Uuid
+  businessId     String       @map("business_id") @db.Uuid
+  journalEntryId String       @map("journal_entry_id") @db.Uuid
+  accountId      String       @map("account_id") @db.Uuid
+  debit          Decimal      @default(0) @db.Decimal(38, 2)
+  credit         Decimal      @default(0) @db.Decimal(38, 2)
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz
+  journalEntry   JournalEntry @relation(fields: [businessId, journalEntryId], references: [businessId, id], onDelete: Restrict)
+  account        Account      @relation(fields: [businessId, accountId], references: [businessId, id], onDelete: Restrict)
+
+  @@index([businessId, accountId, createdAt], map: "journal_lines_by_account")
+  @@map("journal_lines")
+}
+
+model StockMovement {
+  id              String      @id @db.Uuid
+  businessId      String      @map("business_id") @db.Uuid
+  sourceEventId   String      @map("source_event_id") @db.Uuid
+  sourceLineId    String      @map("source_line_id") @db.Uuid
+  movementKind    String      @map("movement_kind") @db.VarChar(40)
+  leg             String      @db.VarChar(20)
+  locationId      String      @map("location_id") @db.Uuid
+  quantityDelta   Decimal     @map("quantity_delta") @db.Decimal(38, 6)
+  valueDelta      Decimal     @map("value_delta") @db.Decimal(38, 2)
+  valuationStatus String      @map("valuation_status") @db.VarChar(20)
+  createdAt       DateTime    @default(now()) @map("created_at") @db.Timestamptz
+  business        Business    @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  sourceEvent     SourceEvent @relation(fields: [businessId, sourceEventId], references: [businessId, id], onDelete: Restrict)
+  location        Location    @relation(fields: [businessId, locationId], references: [businessId, id], onDelete: Restrict)
+
+  @@unique([businessId, sourceEventId, sourceLineId, movementKind, leg])
+  @@index([businessId, locationId, createdAt], map: "stock_movements_by_location")
+  @@map("stock_movements")
+}
+
+model ProvisionalDeficitCost {
+  id               String      @id @db.Uuid
+  businessId       String      @map("business_id") @db.Uuid
+  sourceEventId    String      @map("source_event_id") @db.Uuid
+  sourceLineId     String      @map("source_line_id") @db.Uuid
+  quantityBase     Decimal     @map("quantity_base") @db.Decimal(38, 6)
+  provisionalValue Decimal     @map("provisional_value") @db.Decimal(38, 2)
+  status           String      @default("Open") @db.VarChar(20)
+  business         Business    @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  sourceEvent      SourceEvent @relation(fields: [businessId, sourceEventId], references: [businessId, id], onDelete: Restrict)
+
+  @@unique([businessId, sourceEventId, sourceLineId])
+  @@map("provisional_deficit_costs")
+}
+
+model ChangeBatch {
+  businessId    String      @map("business_id") @db.Uuid
+  datasetEpoch  Int         @map("dataset_epoch")
+  cursor        BigInt      @db.BigInt
+  sourceEventId String      @map("source_event_id") @db.Uuid
+  payload       Json
+  committedAt   DateTime    @default(now()) @map("committed_at") @db.Timestamptz
+  business      Business    @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  sourceEvent   SourceEvent @relation(fields: [businessId, sourceEventId], references: [businessId, id], onDelete: Restrict)
+
+  @@id([businessId, datasetEpoch, cursor])
+  @@unique([businessId, sourceEventId])
+  @@map("change_batches")
 }
