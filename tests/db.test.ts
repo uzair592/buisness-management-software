@@ -7,7 +7,6 @@ import crypto from "node:crypto";
 import { Client } from "pg";
 import { createDatabase } from "../packages/db/src/index";
 import { provisionDatabase } from "../packages/db/src/provision";
-import { repairMigrationHistory } from "../packages/db/src/repair-history";
 import { createApp } from "../apps/api/src/app";
 
 test("real PostgreSQL readiness, outage and recovery", async () => {
@@ -122,7 +121,7 @@ test("fresh installation on arbitrarily named PostgreSQL database with custom ru
   }
 });
 
-test("existing database upgrade path: PR #3 original migration, representative data, migration deploy, and data-preserving history repair", async () => {
+test("existing database upgrade path: PR #3 original migration, representative data, migration deploy, and migration tooling verification", async () => {
   const adminUrl =
     process.env.DATABASE_URL ||
     "postgresql://bms_local:bms_local@127.0.0.1:5432/bms?schema=public";
@@ -284,16 +283,18 @@ test("existing database upgrade path: PR #3 original migration, representative d
       assert.equal(rtRes.rows[0].count, "1");
       await runtimeClient.end();
 
-      // 7. Execute data-preserving repair without database reset
-      const reconciled = await repairMigrationHistory({
-        migrationUrl: existingAdminUrl.toString(),
-      });
-      assert.equal(reconciled.length, 1, "Must reconcile the 1 modified migration");
-      assert.equal(reconciled[0].migrationName, "20261015000000_init_identity_and_devices");
-      assert.equal(reconciled[0].recordedChecksum, originalChecksum);
-      assert.equal(reconciled[0].diskChecksum, diskChecksum);
+      // 7. Verify recorded checksum remains the historical PR #3 checksum without silent mutation
+      const mig1Record = await dbClient.query(
+        "SELECT checksum FROM _prisma_migrations WHERE migration_name = '20261015000000_init_identity_and_devices';",
+      );
+      assert.equal(
+        mig1Record.rows[0].checksum,
+        originalChecksum,
+        "Migration record must preserve the historical PR #3 checksum without silent rewriting",
+      );
 
-      // 8. Verify prisma migrate status is completely clean
+      // 8. Verify prisma migrate status reports that all migrations are applied
+      // Note: migrate status verifies finished records exist in _prisma_migrations; it does not check checksum hashes
       const statusOut = execSync("pnpm --filter @business/db exec prisma migrate status", {
         env: {
           ...process.env,
@@ -303,13 +304,28 @@ test("existing database upgrade path: PR #3 original migration, representative d
       });
       assert.match(statusOut, /Database schema is up to date!/);
 
-      // Verify checksum in _prisma_migrations now matches disk
-      const afterRepair = await dbClient.query(
-        "SELECT checksum FROM _prisma_migrations WHERE migration_name = '20261015000000_init_identity_and_devices';",
+      // 9. Verify prisma migrate dev detects the checksum divergence rather than concealing it
+      let devErrorOutput = "";
+      try {
+        execSync("pnpm --filter @business/db exec prisma migrate dev", {
+          env: {
+            ...process.env,
+            DATABASE_URL: existingAdminUrl.toString(),
+          },
+          encoding: "utf-8",
+          input: "n\n",
+        });
+      } catch (err: unknown) {
+        const execErr = err as { stdout?: Buffer | string; stderr?: Buffer | string };
+        devErrorOutput = String(execErr.stdout || "") + String(execErr.stderr || "");
+      }
+      assert.match(
+        devErrorOutput,
+        /The migration `20261015000000_init_identity_and_devices` was modified after it was applied/,
+        "prisma migrate dev must flag the checksum discrepancy for operator awareness",
       );
-      assert.equal(afterRepair.rows[0].checksum, diskChecksum);
 
-      // Verify all data is STILL intact after repair
+      // 10. Verify all application data remains completely intact after status and dev checks
       const bCountAfter = await dbClient.query("SELECT COUNT(*) AS count FROM businesses;");
       assert.equal(bCountAfter.rows[0].count, "1");
     } finally {

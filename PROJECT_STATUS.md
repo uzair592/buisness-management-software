@@ -7,7 +7,7 @@ Last planning update: 2026-10-15.
 | M00 Product plan and diagrams | Complete | Planning documents, 30 Mermaid sources and staged agent prompts in this repository |
 | M01 Foundation | Complete; PR #1 merged | Workspace, responsive shell, PostgreSQL readiness and [M01 evidence](docs/evidence/m01/README.md); UI prototype gate only |
 | M01 UI refinement | Complete; PR #2 merged | [Screenshots and original checks](docs/evidence/m01-ui-refinement/README.md); [filter-race repair and passing CI](docs/evidence/m01-ui-refinement/ci-filter-fix.md); isolated sample interactions only |
-| M02 Identity and devices | Complete; PR #3 and #4 merged; migration history repair PR review pending | [M02 evidence](docs/evidence/m02/README.md); Prisma 7 prerequisite, global username auth, PostgreSQL RLS under restricted `bms_runtime`, composite FKs, device enrolment/signed leases, partitioned IndexedDB bootstrap, data-preserving migration reconciliation |
+| M02 Identity and devices | Complete; PR #3 and #4 merged; migration repair PR review pending | [M02 evidence](docs/evidence/m02/README.md); Prisma 7 prerequisite, global username auth, PostgreSQL RLS under restricted `bms_runtime`, composite FKs, device enrolment/signed leases, partitioned IndexedDB bootstrap, verified dual upgrade and fresh installation paths |
 | M03 Domain and journal | Not started | — |
 | M04 Catalogue and opening balances | Not started | — |
 | M05 First sale | Not started | — |
@@ -106,38 +106,56 @@ Review and merge the M02 migration history repair PR before starting [Milestone 
 - Branch: `fix/m02-migration-history-repair`, branched from `main` at `cda66ab398f72f43dfbcee273675c61016796636` (post-PR #4 merge).
 - Investigation of PR #3 (`ee0752f`) vs PR #4 migration modification:
   - Original M02 migration `20261015000000_init_identity_and_devices/migration.sql` was merged in PR #3 with SHA-256 checksum `d536d3508b09f7209e77eefc23b7648ad998c22716772a12fc14e51c349e668e`.
-  - PR #4 modified lines 212 and 219 in place to replace `GRANT CONNECT ON DATABASE bms` with dynamic `EXECUTE format('GRANT CONNECT ON DATABASE %I TO bms_runtime', current_database())` and remove the default password from `CREATE ROLE bms_runtime`. This changed the file's SHA-256 checksum on disk to `116dbc0db6c72a71b8e662ca2fc861c6fbe08413dfef976d0bf102e113916c18`.
+  - PR #4 modified lines 212 and 219 in place to replace `GRANT CONNECT ON DATABASE bms` with dynamic `EXECUTE format('GRANT CONNECT ON DATABASE %I TO bms_runtime', current_database())` and removed the hardcoded password from `CREATE ROLE bms_runtime`. This changed the file's SHA-256 checksum on disk to `116dbc0db6c72a71b8e662ca2fc861c6fbe08413dfef976d0bf102e113916c18`.
 - Path 1 reproduction (Existing database upgrade):
-  - Applied original PR #3 migration SQL (`ee0752f`) and seeded `_prisma_migrations` with `d536d3508b09f7209e77eefc23b7648ad998c22716772a12fc14e51c349e668e`.
+  - Applied original PR #3 migration SQL (from committed fixture `tests/fixtures/pr3_m02_migration.sql`) and seeded `_prisma_migrations` with `d536d3508b09f7209e77eefc23b7648ad998c22716772a12fc14e51c349e668e`.
   - Inserted representative business records across `businesses`, `locations`, `users`, `memberships`, `device_prefix_registry`, `device_enrollments`, and `sessions`.
-  - Executed standard deployment upgrade command `pnpm db:migrate` (`prisma migrate deploy`) against current `main`.
-  - Observed that migration 2 (`20261016120000_repair_runtime_provisioning_and_isolation`) applied cleanly without error.
-  - Confirmed all representative data survived completely intact (1 business, 1 location, 1 user, 1 membership, 1 device, 1 session).
-  - Confirmed restricted role `bms_runtime` access remained functional under RLS.
-  - Verified `prisma migrate status` reported `Database schema is up to date!`.
-  - **Identified mismatch**: `_prisma_migrations` retained the PR #3 checksum (`d536...`) while the disk file has the PR #4 checksum (`116d...`). Running the development command `prisma migrate dev` detects that migration 1 was modified after it was applied and prompts for an unassisted schema reset (`We need to reset the "public" schema`).
+  - Upgraded using current `main` via `pnpm db:migrate`.
+  - **Tooling behavior on upgraded PR #3 database:**
+    1. `pnpm db:migrate` / `prisma migrate deploy`:
+       - Checks `_prisma_migrations` against the migration folder.
+       - Migration 1 (`20261015000000_init_identity_and_devices`) is already marked applied; `migrate deploy` does not re-compute or enforce checksum equality on already applied historical migrations.
+       - Safely applies the pending migration 2 (`20261016120000_repair_runtime_provisioning_and_isolation`).
+       - Preserves all business records, locations, users, memberships, devices, and sessions completely intact without data loss.
+       - Leaves restricted runtime role `bms_runtime` access fully functional under RLS.
+    2. `prisma migrate status`:
+       - Inspects whether all on-disk migration directories have finished execution rows in `_prisma_migrations`.
+       - Exits with code 0 and reports `Database schema is up to date!`.
+       - **Important distinction**: `prisma migrate status` checks migration presence and completion status; it does **not** perform checksum validation against on-disk files, and therefore a clean `migrate status` output alone does not prove that historical migration files match their applied checksums.
+    3. `prisma migrate dev`:
+       - Verifies the SHA-256 checksum of every applied migration file against `_prisma_migrations.checksum`.
+       - Detects the checksum discrepancy on migration 1 (`d536...` in DB vs `116d...` on disk).
+       - Halts execution and warns:
+         `The migration 20261015000000_init_identity_and_devices was modified after it was applied.`
+         `We need to reset the "public" schema at "..."`
+       - Prompts the operator for an unassisted schema reset, which would delete all operational data if accepted.
 - Path 2 reproduction (Fresh database installation):
   - Created an arbitrarily named PostgreSQL database without an extra `bms` database.
   - Verified `provisionDatabase` rejects default passwords in production mode and provisions a secure custom password.
   - Applied all migrations from scratch via `pnpm --filter @business/db exec prisma migrate deploy`. Confirmed all migrations succeed and `bms_runtime` connects and queries tables without requiring an extra `bms` database.
-- Data-preserving repair implementation:
-  - Created `packages/db/src/repair-history.ts` and root script `pnpm db:repair-history`.
-  - The repair script connects to the target database, inspects `_prisma_migrations`, and compares the recorded SHA-256 checksums against the on-disk `migration.sql` files.
-  - When a mismatch is found, it explicitly reports `[MIGRATION CHECKSUM MISMATCH DETECTED]` with both recorded and disk checksums (never concealing warnings).
-  - It non-destructively reconciles the checksum in `_prisma_migrations` without dropping schemas, resetting tables, or touching application data.
-  - Replaces error-prone manual psql updates with an automated, safe, tested operator command.
-  - Once reconciled, `prisma migrate dev` detects no drift and confirms: `Already in sync, no schema change or pending migration was found.`
-- Automated repeatable regression tests:
-  - Added comprehensive automated test in `tests/db.test.ts`: `existing database upgrade path: PR #3 original migration, representative data, migration deploy, and data-preserving history repair`. Tests the complete lifecycle from PR #3 migration, data seeding, upgrade deploy, checksum mismatch detection, automated repair, status verification, and data survival.
-  - Fresh database installation test retained and verified passing in `tests/db.test.ts`.
+- Migration Strategy & Non-Destructive Invariant:
+  - Checksum records in `_prisma_migrations` represent historical evidence of what was applied. Automated scripts must **never** silently rewrite applied migration records. Generic `db:repair-history` tooling was removed.
+  - Production and staging deployments run `pnpm db:migrate` (`prisma migrate deploy`), which executes cleanly with zero data loss and requires no manual SQL or migration table modification.
+  - **Controlled Operator Procedure for Development Environments:**
+    - If a developer working against an upgraded PR #3 database needs to unblock `prisma migrate dev` for authoring new migrations without resetting data:
+      1. Confirm test suites pass against the database: `pnpm test:db`.
+      2. Execute an explicit, single targeted SQL update strictly matching the known migration:
+         ```sql
+         UPDATE _prisma_migrations 
+         SET checksum = '116dbc0db6c72a71b8e662ca2fc861c6fbe08413dfef976d0bf102e113916c18' 
+         WHERE migration_name = '20261015000000_init_identity_and_devices' 
+           AND checksum = 'd536d3508b09f7209e77eefc23b7648ad998c22716772a12fc14e51c349e668e';
+         ```
+      3. Verify `prisma migrate dev` outputs: `Already in sync, no schema change or pending migration was found.`
+      4. Never run blanket or automated checksum rewrites across arbitrary migrations.
+- Automated Repeatable Tests in `tests/db.test.ts`:
+  - `existing database upgrade path: PR #3 original migration, representative data, migration deploy, and migration tooling verification`: tests the complete journey on an existing PR #3 database, confirms data preservation, verifies `_prisma_migrations.checksum` remains historically unaltered, validates `prisma migrate status` output, and confirms `prisma migrate dev` detects the checksum mismatch.
+  - `fresh installation on arbitrarily named PostgreSQL database with custom runtime password`: verifies fresh arbitrary database provisioning, default password rejection, and migration deploy without an extra `bms` database.
 - Full verification gate results:
   - `pnpm check`: Passed (ESLint 10 with 0 warnings, TypeScript strict checking across contracts/db/domain/ui/api/web, API tsup build, Web Vite build, and 9 domain/decimal/local-db unit tests).
   - `pnpm test:db`: Passed 5 real PostgreSQL test suites (`tests/db.test.ts`, `tests/db-isolation.test.ts`, `tests/identity-api.test.ts`).
   - `pnpm test:runtime`: Passed compiled API server startup and DB readiness test.
   - `pnpm test:e2e`: Passed all 13 Playwright browser E2E tests across 1366×768, 1920×1080, and 390×844 viewports.
-- Operator Upgrade Instructions:
-  - Existing databases: run `pnpm db:migrate`. If running in a development environment where `prisma migrate dev` is used, run `pnpm db:repair-history` once to reconcile the migration checksum history without resetting data.
-  - Fresh installations: configure `BMS_RUNTIME_PASSWORD` and run `pnpm db:migrate`.
 
 ## M00 validation
 
