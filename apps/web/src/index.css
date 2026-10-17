@@ -2,6 +2,21 @@
 @tailwind components;
 @tailwind utilities;
 
+.live-error { color: #a02020; margin: 12px 0; }
+.live-row-actions { display: inline-flex; gap: 4px; }
+.live-pagination { display: flex; gap: 12px; align-items: center; justify-content: flex-end; padding: 16px 0 4px; }
+.live-dialog { width: min(100%, 560px); max-height: calc(100vh - 32px); overflow: auto; }
+.live-dialog h2 { margin-bottom: 16px; }
+.live-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.live-form > label { display: grid; gap: 5px; font-weight: 600; color: #465670; }
+.live-form > label:first-child, .live-checks, .live-form-actions, .live-form > .live-error, .live-form > .muted { grid-column: 1 / -1; }
+.live-checks { display: flex; gap: 20px; }
+.live-form-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 6px; }
+.live-unit-add { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; align-items: center; }
+.live-unit-add span { grid-column: 1 / -1; font-weight: 600; }
+@media (max-width: 540px) { .live-form { grid-template-columns: 1fr; } .live-form > * { grid-column: 1 / -1; } .live-dialog { padding: 16px; } }
+@media (max-width: 540px) { .live-unit-add { grid-template-columns: 1fr; } }
+
 :root {
   font-family: Inter, "Segoe UI", system-ui, sans-serif;
   color: #17243b;
