@@ -28,6 +28,7 @@ export interface PostingLine {
 
 export interface PostingStockEffect {
   id: string;
+  itemId?: string;
   sourceLineId: string;
   locationId: string;
   movementKind: string;
@@ -53,6 +54,8 @@ export interface PostingCommand {
   reversesEntryId?: string;
   lines: readonly PostingLine[];
   stockEffects?: readonly PostingStockEffect[];
+  /** Internal command metadata participates in the idempotency hash. */
+  metadata?: Record<string, unknown>;
   claimedPayloadHash?: string;
 }
 
@@ -97,7 +100,7 @@ function validate(command: PostingCommand): void {
   }
   if (!debit || debit !== credit) throw new Error("Unbalanced journal");
   for (const effect of command.stockEffects ?? []) {
-    if (![effect.id, effect.sourceLineId, effect.locationId].every((id) => UUID.test(id)) ||
+    if (![effect.id, effect.sourceLineId, effect.locationId, effect.itemId].filter((id): id is string => id !== undefined).every((id) => UUID.test(id)) ||
         !QUANTITY.test(effect.quantityDelta) || !/^-?\d+(?:\.\d{1,2})?$/.test(effect.valueDelta)) {
       throw new Error("Invalid stock effect");
     }
@@ -110,7 +113,9 @@ function validate(command: PostingCommand): void {
 export async function postCommand(
   db: PrismaClient,
   command: PostingCommand,
-  hooks: { afterHeadLock?: () => Promise<void>; beforeCommit?: () => Promise<void> } = {},
+  hooks: { afterHeadLock?: () => Promise<void>;
+    beforePosting?: (tx: Prisma.TransactionClient, cursor: bigint) => Promise<void>;
+    beforeCommit?: (tx: Prisma.TransactionClient) => Promise<void> } = {},
 ): Promise<PostingResult> {
   validate(command);
   const hash = commandHash(command);
@@ -153,6 +158,7 @@ export async function postCommand(
           if (receipt.payloadHash !== hash) throw new ChangedCommandError();
           return receipt.canonicalResult as unknown as PostingResult;
         }
+        if (hooks.beforePosting) await hooks.beforePosting(tx, head.committed_cursor);
 
         const accounts = [...new Set(command.lines.map((line) => line.accountId))].sort();
         const locked = await tx.$queryRaw<{ id: string }[]>`
@@ -184,9 +190,9 @@ export async function postCommand(
         for (const effect of command.stockEffects ?? []) {
           await tx.$executeRaw`
             INSERT INTO stock_movements (id,business_id,source_event_id,source_line_id,movement_kind,leg,
-              location_id,quantity_delta,value_delta,valuation_status)
+              location_id,item_id,quantity_delta,value_delta,valuation_status)
             VALUES (${effect.id}::uuid,${command.businessId}::uuid,${command.sourceEventId}::uuid,
-              ${effect.sourceLineId}::uuid,${effect.movementKind},${effect.leg},${effect.locationId}::uuid,
+              ${effect.sourceLineId}::uuid,${effect.movementKind},${effect.leg},${effect.locationId}::uuid,${effect.itemId ?? null}::uuid,
               ${effect.quantityDelta}::numeric,${effect.valueDelta}::numeric,${effect.valuationStatus})`;
         }
         const cursor = (head.committed_cursor + 1n).toString();
@@ -214,7 +220,7 @@ export async function postCommand(
         });
         await tx.$executeRaw`UPDATE sync_heads SET committed_cursor=${cursor}::bigint
           WHERE business_id=${command.businessId}::uuid`;
-        if (hooks.beforeCommit) await hooks.beforeCommit();
+        if (hooks.beforeCommit) await hooks.beforeCommit(tx);
         return result;
       }, { timeout: 15000, maxWait: 15000 });
     } catch (error: unknown) {

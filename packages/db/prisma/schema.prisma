@@ -39,6 +39,8 @@ model Business {
   auditEvents            AuditEvent[]
   accounts               Account[]
   expenseCategories      ExpenseCategory[]
+  openingBatches         OpeningBatch[]
+  openingDocuments       OpeningDocument[]
   syncHead               SyncHead?
   commandReceipts        CommandReceipt[]
   sourceEvents           SourceEvent[]
@@ -197,6 +199,39 @@ model Account {
   @@map("accounts")
 }
 
+model OpeningBatch {
+  id            String            @id @db.Uuid
+  businessId    String            @unique @map("business_id") @db.Uuid
+  sourceEventId String            @map("source_event_id") @db.Uuid
+  snapshot      Json
+  createdAt     DateTime          @default(now()) @map("created_at") @db.Timestamptz
+  business      Business          @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  sourceEvent   SourceEvent       @relation(fields: [businessId, sourceEventId], references: [businessId, id], onDelete: Restrict)
+  documents     OpeningDocument[]
+
+  @@unique([businessId, id])
+  @@map("opening_batches")
+}
+
+model OpeningDocument {
+  id                String       @id @db.Uuid
+  businessId        String       @map("business_id") @db.Uuid
+  batchId           String       @map("batch_id") @db.Uuid
+  partyId           String       @map("party_id") @db.Uuid
+  reference         String       @db.VarChar(120)
+  direction         String       @db.VarChar(12)
+  amount            Decimal      @db.Decimal(38, 2)
+  partyNameSnapshot String       @map("party_name_snapshot") @db.VarChar(160)
+  createdAt         DateTime     @default(now()) @map("created_at") @db.Timestamptz
+  business          Business     @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  batch             OpeningBatch @relation(fields: [businessId, batchId], references: [businessId, id], onDelete: Restrict)
+  party             Party        @relation(fields: [businessId, partyId], references: [businessId, id], onDelete: Restrict)
+
+  @@unique([businessId, id])
+  @@unique([businessId, batchId, reference, direction])
+  @@map("opening_documents")
+}
+
 model ExpenseCategory {
   id         String    @id @db.Uuid
   businessId String    @map("business_id") @db.Uuid
@@ -250,6 +285,7 @@ model SourceEvent {
   stockMovements      StockMovement[]
   provisionalDeficits ProvisionalDeficitCost[]
   changeBatches       ChangeBatch[]
+  openingBatches      OpeningBatch[]
 
   @@unique([businessId, id])
   @@unique([businessId, commandId, effectKind])
@@ -451,6 +487,7 @@ model Party {
   createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   business   Business  @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  openingDocuments OpeningDocument[]
 
   @@unique([businessId, id])
   @@index([businessId, name, id], map: "parties_search")

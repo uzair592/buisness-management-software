@@ -17,7 +17,8 @@ import {
   ROLE_CAPABILITIES,
   type Role,
 } from "@business/contracts";
-import { type Prisma, type PrismaClient, withBusinessChange, withTenantContext } from "@business/db";
+import { type Prisma, type PrismaClient, ChangedCommandError, withBusinessChange, withTenantContext } from "@business/db";
+import { openingInput, prepareOpening, commitOpening, systemAccounts, OpeningConflict } from "./opening.js";
 import { hashPassword, verifyPassword } from "./auth/password.js";
 import {
   createSession,
@@ -1230,7 +1231,8 @@ export function createApp(
     kind: z.enum(["Cash", "Bank", "Expense"]),
     expenseCategoryId: z.uuid().nullable().default(null),
   }).strict().refine((value) => (value.kind === "Expense") === (value.expenseCategoryId !== null),
-    "Expense accounts require an expense category; other accounts cannot use one");
+    "Expense accounts require an expense category; other accounts cannot use one")
+    .refine((value) => !value.code.startsWith("OPEN_"), "System account codes are reserved");
   const expenseCategoryInput = z.object({ name: z.string().trim().min(1).max(120) });
 
   function accountContext(request: FastifyRequest, reply: FastifyReply, write: boolean) {
@@ -1314,6 +1316,70 @@ export function createApp(
       });
     } catch (error) {
       if (error instanceof Error && error.message === "VERSION_CONFLICT") return reply.code(409).send({ error: "Account changed on another device; reload and review your edits" });
+      throw error;
+    }
+  });
+
+  app.post("/v1/accounts/system", async (request, reply) => {
+    const tenant = accountContext(request, reply, true);
+    if (!tenant) return;
+    const existing = await withTenantContext(requireDb(), tenant, async (tx) => tx.account.findMany({
+      where: { businessId: tenant.businessId, code: { in: systemAccounts.map((a) => a.code) } },
+    }));
+    if (existing.length === systemAccounts.length && systemAccounts.every((account) => existing.some((row) =>
+      row.code === account.code && row.kind === account.kind && row.classification === account.classification && !row.archivedAt))) return { accounts: existing };
+    try {
+      return await withBusinessChange(requireDb(), tenant.businessId, tenant.userId, "account.system_init", async (tx) => {
+        const rows = [];
+        for (const account of systemAccounts) {
+          const found = await tx.account.findFirst({ where: { businessId: tenant.businessId, code: account.code } });
+          if (found && (found.kind !== account.kind || found.classification !== account.classification || found.archivedAt)) throw new OpeningConflict("A reserved system account code has conflicting configuration");
+          rows.push(found ?? await tx.account.create({ data: { id: crypto.randomUUID(), businessId: tenant.businessId, ...account } }));
+        }
+        return { result: { accounts: rows }, change: { initialized: true } };
+      });
+    } catch (error) {
+      if (error instanceof OpeningConflict) return reply.code(409).send({ error: error.message });
+      throw error;
+    }
+  });
+
+  app.get("/v1/opening", async (request, reply) => {
+    const tenant = accountContext(request, reply, false);
+    if (!tenant) return;
+    return withTenantContext(requireDb(), tenant, async (tx) => tx.openingBatch.findFirst({
+      where: { businessId: tenant.businessId }, include: { documents: true },
+    }));
+  });
+
+  app.post("/v1/opening/preview", async (request, reply) => {
+    const tenant = accountContext(request, reply, true);
+    if (!tenant) return;
+    const parsed = openingInput.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: "Invalid opening batch", details: parsed.error.flatten() });
+    try {
+      const prepared = await prepareOpening(requireDb(), tenant.businessId, tenant.userId, parsed.data);
+      return { preview: prepared.preview, expectedCursor: prepared.expectedCursor };
+    } catch (error) {
+      if (error instanceof OpeningConflict) return reply.code(400).send({ error: error.message });
+      throw error;
+    }
+  });
+
+  app.post("/v1/opening/commit", async (request, reply) => {
+    const tenant = accountContext(request, reply, true);
+    if (!tenant) return;
+    const parsed = openingInput.extend({ expectedCursor: z.string().regex(/^\d+$/) }).safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: "Invalid opening batch", details: parsed.error.flatten() });
+    const { expectedCursor, ...input } = parsed.data;
+    try {
+      const result = await commitOpening(requireDb(), tenant.businessId, tenant.userId, input, expectedCursor);
+      return reply.code(201).send(result);
+    } catch (error) {
+      if (error instanceof OpeningConflict || error instanceof ChangedCommandError ||
+          (typeof error === "object" && error && "code" in error && error.code === "P2002")) {
+        return reply.code(409).send({ error: error instanceof Error ? error.message : "Opening batch already exists" });
+      }
       throw error;
     }
   });

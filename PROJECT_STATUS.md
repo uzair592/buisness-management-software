@@ -9,7 +9,7 @@ Last planning update: 2026-10-15.
 | M01 UI refinement | Complete; PR #2 merged | [Screenshots and original checks](docs/evidence/m01-ui-refinement/README.md); [filter-race repair and passing CI](docs/evidence/m01-ui-refinement/ci-filter-fix.md); isolated sample interactions only |
 | M02 Identity and devices | Core complete; PR #3, #4 and #5 merged | [M02 evidence](docs/evidence/m02/README.md); Prisma 7 prerequisite, global username auth, PostgreSQL RLS under restricted `bms_runtime`, composite FKs, device enrolment/signed leases, partitioned IndexedDB bootstrap, verified upgrade and fresh installation paths; historical checksum mismatch remains for upgraded PR #3 databases |
 | M03 Domain and journal | Foundation on main; remaining acceptance open | PR #7 restored the posting foundation and PR #8 serialized device configuration writes with posting cursors; full domain acceptance remains open. |
-| M04 Catalogue and opening balances | In progress | PR #9 merged tenant-scoped catalogue/party API and UI. This increment adds cash/bank/expense account setup and role-filtered bootstrap read models. Opening batch, incremental pull, provisional-party dependency handling, and setup UI remain pending. |
+| M04 Catalogue and opening balances | In progress | PR #9 merged tenant-scoped catalogue/party API and UI. Draft PR #10 adds cash/bank/expense account setup, role-filtered bootstrap reads, and a one-time previewed opening posting with journal, item-linked stock, and party due documents. Incremental pull, provisional-party dependency handling, setup/opening UI, and broad acceptance remain pending. |
 | M05 First sale | Not started | — |
 | M06 Offline and two-device sync | Not started | — |
 | M07 Purchases and money | Not started | — |
@@ -23,7 +23,7 @@ Last planning update: 2026-10-15.
 
 ## Next action
 
-Review the account setup and bootstrap increment, then implement previewed, idempotent opening batches with traceable party due documents and stock/item reconciliation. M05 first sale remains blocked until M04 accounting and sync gates pass.
+Review draft PR #10's opening accounting and tenant integration evidence. Complete the remaining M04 incremental pull, provisional-party dependency ordering, and setup/opening UI, then run the full acceptance gate. M05 first sale remains blocked until M04 accounting and sync gates pass.
 
 Continue [Milestone 04: Catalogue and opening balances](prompts/04-catalogue-and-opening.md), while tracking remaining M03 valuation and accounting fixtures. M02 establishes username authentication, database/API tenant isolation under a restricted role, device enrolment, signed leases, and local IndexedDB partitioning; it does not claim offline billing or sync replication (scheduled for later milestones).
 
