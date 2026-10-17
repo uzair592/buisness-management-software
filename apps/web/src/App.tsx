@@ -8,10 +8,10 @@ import { PreviewProvider } from "./preview/PreviewProvider";
 import { RecordsPage } from "./pages/RecordsPage";
 import { DirectoryPage } from "./pages/DirectoryPage";
 import { SettingsPage } from "./pages/SettingsPage";
+import { AccountSetupPage } from "./pages/AccountSetupPage";
 import { AuthProvider } from "./context/AuthContext";
 
 const planned = [
-  ["cash-bank", "Cash & Bank", "Account books, receipts and payments"],
   ["expenses", "Expenses", "Categories and cash expenses"],
   ["reports", "Reports", "Business reports with explicit data coverage"],
   ["sync", "Sync & Backup", "Offline transactions, device sync and recovery"],
@@ -40,6 +40,7 @@ export default function App() {
               element={<DirectoryPage key="items" type="items" />}
             />
             <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/cash-bank" element={<AccountSetupPage />} />
             {planned.map(([path, title, description]) => (
               <Route
                 key={path}
