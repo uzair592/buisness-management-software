@@ -25,6 +25,7 @@ const schema = z.object({
     .string()
     .min(32, "LEASE_SECRET must be at least 32 characters")
     .default(DEFAULT_DEV_LEASE_SECRET),
+  TRUST_PROXY: z.string().optional().default("false"),
 });
 
 export function parseEnv(input: NodeJS.ProcessEnv) {
@@ -55,5 +56,29 @@ export function parseEnv(input: NodeJS.ProcessEnv) {
     throw new Error("Production requires non-development session and lease secrets");
   if (input.DEMO_MODE && input.DEMO_MODE !== "false")
     throw new Error("Demo mode is not supported");
-  return env;
+
+  let trustProxy: boolean | string[] = false;
+  if (env.TRUST_PROXY) {
+    const tp = env.TRUST_PROXY.trim().toLowerCase();
+    if (tp === "true" || tp === "1") {
+      trustProxy = true;
+    } else if (tp === "false" || tp === "0") {
+      trustProxy = false;
+    } else {
+      const list = env.TRUST_PROXY.split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (list.length === 0) {
+        throw new Error(
+          "Invalid TRUST_PROXY: expected 'true', 'false', or comma-separated IP list",
+        );
+      }
+      trustProxy = list;
+    }
+  }
+
+  return {
+    ...env,
+    trustProxy,
+  };
 }

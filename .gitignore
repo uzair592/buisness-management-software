@@ -9,9 +9,5 @@ playwright-report/
 test-results/
 # Existing local Continuity state
 SESSION_HANDOFF.md
-.continuity/*
-!.continuity/decisions.jsonl
-!.continuity/decisions.json
-!.continuity/.gitattributes
-!.continuity/SESSION_NOTES.md
-!.continuity/INSTRUCTIONS.md
+.continuity/
+.github/copilot-instructions.md

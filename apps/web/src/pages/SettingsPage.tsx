@@ -10,6 +10,7 @@ import {
   bootstrapLocalIdentity,
   readCachedIdentity,
   isOfflineLeaseValid,
+  closeActiveLocalDb,
 } from "../db/index";
 
 export function SettingsPage() {
@@ -68,7 +69,43 @@ export function SettingsPage() {
   > | null>(null);
   const [bootstrapStatus, setBootstrapStatus] = useState<string | null>(null);
 
+  // Finding 4: Deliberately bind browser to a device instead of blindly picking the first enrolled device
+  const [boundDeviceId, setBoundDeviceId] = useState<string | null>(() => {
+    if (typeof window !== "undefined" && auth.selectedBusinessId) {
+      return localStorage.getItem(`bms_device_binding_${auth.selectedBusinessId}`);
+    }
+    return null;
+  });
+
   const isOwner = auth.activeMembership?.role === "Owner";
+
+  // Synchronize bound device key when selected business changes
+  useEffect(() => {
+    if (typeof window !== "undefined" && auth.selectedBusinessId) {
+      setBoundDeviceId(localStorage.getItem(`bms_device_binding_${auth.selectedBusinessId}`));
+    } else {
+      setBoundDeviceId(null);
+    }
+  }, [auth.selectedBusinessId]);
+
+  function bindDeviceToBrowser(deviceId: string) {
+    if (typeof window !== "undefined" && auth.selectedBusinessId) {
+      localStorage.setItem(`bms_device_binding_${auth.selectedBusinessId}`, deviceId);
+      setBoundDeviceId(deviceId);
+    }
+  }
+
+  // Clear stale UI state and close local database partition when business/user changes or logs out
+  useEffect(() => {
+    if (!auth.authenticated || !auth.selectedBusinessId) {
+      setDevices([]);
+      setLocations([]);
+      setSessions([]);
+      setLocalCache(null);
+      setBootstrapStatus(null);
+      closeActiveLocalDb();
+    }
+  }, [auth.authenticated, auth.selectedBusinessId]);
 
   // Load locations, devices, sessions when authenticated with selected business
   useEffect(() => {
@@ -82,6 +119,23 @@ export function SettingsPage() {
           fetch("/v1/auth/sessions", { credentials: "include" }),
         ]);
 
+        // If authority rejected, close local partition and clear state
+        if (
+          locRes.status === 401 ||
+          locRes.status === 403 ||
+          devRes.status === 401 ||
+          devRes.status === 403
+        ) {
+          closeActiveLocalDb();
+          setLocalCache(null);
+          setDevices([]);
+          setLocations([]);
+          if (boundDeviceId && auth.selectedBusinessId) {
+            localStorage.removeItem(`bms_verified_bootstrap_${auth.selectedBusinessId}_${boundDeviceId}`);
+          }
+          return;
+        }
+
         if (locRes.ok) {
           const locs = await locRes.json();
           setLocations(locs);
@@ -90,7 +144,8 @@ export function SettingsPage() {
           }
         }
         if (devRes.ok) {
-          setDevices(await devRes.json());
+          const fetchedDevices = await devRes.json();
+          setDevices(fetchedDevices);
         }
         if (sessRes.ok) {
           setSessions(await sessRes.json());
@@ -101,23 +156,49 @@ export function SettingsPage() {
     })();
   }, [auth.authenticated, auth.selectedBusinessId]);
 
-  // Load cached local IndexedDB if available
+  // Load cached local IndexedDB if verified bootstrap metadata is present for the explicitly bound device
   useEffect(() => {
-    if (!auth.authenticated || !auth.user || !auth.selectedBusinessId) return;
-    const enrolledDevice = devices.find((d) => d.status === "Enrolled");
-    if (!enrolledDevice) return;
+    if (!auth.authenticated || !auth.user || !auth.selectedBusinessId || !boundDeviceId) {
+      return;
+    }
+    const boundDevice = devices.find((d) => d.id === boundDeviceId && d.status === "Enrolled");
+    if (!boundDevice) return;
+
+    // Require verified bootstrap metadata before opening the scoped partition
+    // Never guess the dataset epoch or assume authority without verified metadata
+    const metaKey = `bms_verified_bootstrap_${auth.selectedBusinessId}_${boundDevice.id}`;
+    const storedMetaRaw = localStorage.getItem(metaKey);
+    if (!storedMetaRaw) {
+      return;
+    }
+
+    let storedMeta: { userId?: string; businessId?: string; enrollmentId?: string; datasetEpoch?: number };
+    try {
+      storedMeta = JSON.parse(storedMetaRaw);
+    } catch {
+      return;
+    }
+
+    if (
+      storedMeta.userId !== auth.user.id ||
+      storedMeta.businessId !== auth.selectedBusinessId ||
+      storedMeta.enrollmentId !== boundDevice.id ||
+      typeof storedMeta.datasetEpoch !== "number"
+    ) {
+      return;
+    }
 
     const db = getLocalDatabase({
       userId: auth.user.id,
       businessId: auth.selectedBusinessId,
-      enrollmentId: enrolledDevice.id,
-      datasetEpoch: 1,
+      enrollmentId: boundDevice.id,
+      datasetEpoch: storedMeta.datasetEpoch,
     });
 
     void readCachedIdentity(db).then((data) => {
       if (data.business) setLocalCache(data);
     });
-  }, [auth.authenticated, auth.user, auth.selectedBusinessId, devices]);
+  }, [auth.authenticated, auth.user, auth.selectedBusinessId, boundDeviceId, devices]);
 
   async function handleLogin(e: FormEvent) {
     e.preventDefault();
@@ -178,6 +259,12 @@ export function SettingsPage() {
     setDeviceError(null);
     setDeviceSubmitting(true);
 
+    const targetLocationId =
+      newDeviceLocationId ||
+      locations[0]?.id ||
+      auth.activeMembership?.locationId ||
+      "";
+
     try {
       const res = await fetch("/v1/devices/enroll", {
         method: "POST",
@@ -187,7 +274,7 @@ export function SettingsPage() {
         },
         body: JSON.stringify({
           deviceName: newDeviceName,
-          locationId: newDeviceLocationId,
+          locationId: targetLocationId,
           numberPrefix: newDevicePrefix.trim() || undefined,
         }),
       });
@@ -198,6 +285,9 @@ export function SettingsPage() {
       } else {
         setNewDeviceName("");
         setNewDevicePrefix("");
+        if (!boundDeviceId) {
+          bindDeviceToBrowser(data.id);
+        }
         // Reload devices
         const devRes = await fetch("/v1/devices", { credentials: "include" });
         if (devRes.ok) setDevices(await devRes.json());
@@ -234,6 +324,7 @@ export function SettingsPage() {
 
   async function handleBootstrapLocal(device: DeviceEnrollment) {
     setBootstrapStatus("Downloading permitted identity bootstrap...");
+    bindDeviceToBrowser(device.id);
     try {
       const res = await fetch(`/v1/sync/bootstrap?deviceEnrollmentId=${device.id}`, {
         credentials: "include",
@@ -241,6 +332,13 @@ export function SettingsPage() {
       if (!res.ok) {
         const err = await res.json();
         setBootstrapStatus(`Bootstrap failed: ${err.error || "Access denied"}`);
+        if (res.status === 401 || res.status === 403) {
+          closeActiveLocalDb();
+          setLocalCache(null);
+          if (auth.selectedBusinessId) {
+            localStorage.removeItem(`bms_verified_bootstrap_${auth.selectedBusinessId}_${device.id}`);
+          }
+        }
         return;
       }
 
@@ -256,6 +354,18 @@ export function SettingsPage() {
       await bootstrapLocalIdentity(db, bootstrapData);
       const cached = await readCachedIdentity(db);
       setLocalCache(cached);
+
+      localStorage.setItem(
+        `bms_verified_bootstrap_${auth.selectedBusinessId}_${device.id}`,
+        JSON.stringify({
+          userId: auth.user!.id,
+          businessId: auth.selectedBusinessId!,
+          enrollmentId: device.id,
+          datasetEpoch: bootstrapData.business.datasetEpoch,
+          bootstrappedAt: new Date().toISOString(),
+        }),
+      );
+
       setBootstrapStatus("Bootstrap successful! Permitted data cached in partitioned IndexedDB.");
     } catch (err: unknown) {
       setBootstrapStatus(`Bootstrap error: ${err instanceof Error ? err.message : "Unknown error"}`);
@@ -695,6 +805,18 @@ export function SettingsPage() {
                     <td className="p-2 space-x-2">
                       {dev.status === "Enrolled" && (
                         <>
+                          {boundDeviceId === dev.id ? (
+                            <span className="inline-block px-2 py-0.5 rounded text-[11px] font-medium bg-blue-100 text-blue-800 border border-blue-200">
+                              Bound Browser
+                            </span>
+                          ) : (
+                            <Button
+                              onClick={() => bindDeviceToBrowser(dev.id)}
+                              className="btn-secondary text-[11px] py-1 px-2"
+                            >
+                              Bind Browser
+                            </Button>
+                          )}
                           <Button
                             onClick={() => void handleBootstrapLocal(dev)}
                             className="btn-secondary text-[11px] py-1 px-2"

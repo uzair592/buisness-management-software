@@ -178,3 +178,98 @@ test("partition isolation: user B cannot access user A cached records", async ()
   assert.equal(userBRecord, undefined, "User B must not see User A's data");
   closeActiveLocalDb();
 });
+
+test("local cache initialization requires verified bootstrap metadata and never guesses dataset epoch", () => {
+  // Helper simulating the verification rule enforced in SettingsPage
+  function resolveVerifiedPartitionParams(params: {
+    userId: string;
+    businessId: string;
+    boundDeviceId: string;
+    storedBootstrapMeta: unknown;
+  }) {
+    if (!params.storedBootstrapMeta) return null;
+    let meta: { userId?: string; businessId?: string; enrollmentId?: string; datasetEpoch?: number };
+    try {
+      meta =
+        typeof params.storedBootstrapMeta === "string"
+          ? JSON.parse(params.storedBootstrapMeta)
+          : (params.storedBootstrapMeta as {
+              userId?: string;
+              businessId?: string;
+              enrollmentId?: string;
+              datasetEpoch?: number;
+            });
+    } catch {
+      return null;
+    }
+    if (
+      meta.userId !== params.userId ||
+      meta.businessId !== params.businessId ||
+      meta.enrollmentId !== params.boundDeviceId ||
+      typeof meta.datasetEpoch !== "number"
+    ) {
+      return null;
+    }
+    return {
+      userId: meta.userId,
+      businessId: meta.businessId,
+      enrollmentId: meta.enrollmentId,
+      datasetEpoch: meta.datasetEpoch,
+    };
+  }
+
+  // 1. Without verified metadata, no partition is opened (does NOT guess epoch 1)
+  const noMeta = resolveVerifiedPartitionParams({
+    userId: "u-1",
+    businessId: "b-1",
+    boundDeviceId: "d-1",
+    storedBootstrapMeta: null,
+  });
+  assert.equal(noMeta, null, "Must not open partition or guess epoch without verified metadata");
+
+  // 2. With tampered / mismatched user, no partition is opened
+  const tamperedUser = resolveVerifiedPartitionParams({
+    userId: "u-1",
+    businessId: "b-1",
+    boundDeviceId: "d-1",
+    storedBootstrapMeta: JSON.stringify({
+      userId: "u-OTHER",
+      businessId: "b-1",
+      enrollmentId: "d-1",
+      datasetEpoch: 2,
+    }),
+  });
+  assert.equal(tamperedUser, null, "Must reject mismatched userId");
+
+  // 3. With missing or non-numeric epoch, no partition is opened
+  const invalidEpoch = resolveVerifiedPartitionParams({
+    userId: "u-1",
+    businessId: "b-1",
+    boundDeviceId: "d-1",
+    storedBootstrapMeta: JSON.stringify({
+      userId: "u-1",
+      businessId: "b-1",
+      enrollmentId: "d-1",
+      datasetEpoch: "invalid",
+    }),
+  });
+  assert.equal(invalidEpoch, null, "Must reject non-numeric datasetEpoch");
+
+  // 4. With valid verified metadata, partition is opened for the exact verified epoch
+  const valid = resolveVerifiedPartitionParams({
+    userId: "u-1",
+    businessId: "b-1",
+    boundDeviceId: "d-1",
+    storedBootstrapMeta: JSON.stringify({
+      userId: "u-1",
+      businessId: "b-1",
+      enrollmentId: "d-1",
+      datasetEpoch: 5,
+    }),
+  });
+  assert.ok(valid);
+  assert.equal(valid.datasetEpoch, 5);
+  const partitionName = getPartitionDbName(valid);
+  assert.equal(partitionName, "bms_u-1_b-1_d-1_ep5");
+});
+

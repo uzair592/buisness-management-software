@@ -7,7 +7,7 @@ Last planning update: 2026-10-15.
 | M00 Product plan and diagrams | Complete | Planning documents, 30 Mermaid sources and staged agent prompts in this repository |
 | M01 Foundation | Complete; PR #1 merged | Workspace, responsive shell, PostgreSQL readiness and [M01 evidence](docs/evidence/m01/README.md); UI prototype gate only |
 | M01 UI refinement | Complete; PR #2 merged | [Screenshots and original checks](docs/evidence/m01-ui-refinement/README.md); [filter-race repair and passing CI](docs/evidence/m01-ui-refinement/ci-filter-fix.md); isolated sample interactions only |
-| M02 Identity and devices | Validated; PR review pending | [M02 evidence](docs/evidence/m02/README.md); Prisma 7 prerequisite, global username auth, PostgreSQL RLS under restricted `bms_runtime`, composite FKs, device enrolment/signed leases, partitioned IndexedDB bootstrap |
+| M02 Identity and devices | Complete; PR #3 merged; repair PR review pending | [M02 evidence](docs/evidence/m02/README.md); Prisma 7 prerequisite, global username auth, PostgreSQL RLS under restricted `bms_runtime`, composite FKs, device enrolment/signed leases, partitioned IndexedDB bootstrap |
 | M03 Domain and journal | Not started | — |
 | M04 Catalogue and opening balances | Not started | — |
 | M05 First sale | Not started | — |
@@ -55,7 +55,7 @@ Review and merge the Milestone 02 PR before starting [Milestone 03: Domain and j
 ## M02 Identity and devices evidence
 
 - Branch: `milestone-02-identity-and-devices`, branched from merged `main` at commit `6b46ae297b23a307197ed6379ab126c84bdb89c9`.
-- PR: Pending review and user authorization.
+- PR: [#3 — Milestone 02 identity and devices](https://github.com/uzair592/buisness-management-software/pull/3) (merged at `ee0752fec201544dc07737af9c78882999ff36ff`).
 - Prerequisite: Upgraded `@prisma/client` and `prisma` CLI from 6.19.3 to 7.10.0, with `@prisma/adapter-pg` 7.10.0, `pg` 8.23.1, and `@fastify/cookie` 11.0.2. Configured `prisma.config.ts`, added `packages/db/src/generated/` to `.gitignore`, and externalized client drivers in `apps/api/tsup.config.ts`.
 - Transient readiness 503 check: investigated during compiled runtime tests; on native PostgreSQL 17, `pnpm test:runtime` consistently passed (1.68s) and the 503 did not recur. Retained note on potential transient port bind latency during rapid port re-use.
 - Implemented:
@@ -64,14 +64,42 @@ Review and merge the Milestone 02 PR before starting [Milestone 03: Domain and j
   3. Device Security & Signed Leases: sequential non-reusable prefix allocation (`D01`, `D02`, ...) enforced per business via prefix registry; owner-controlled device enrolment and revocation; HMAC-SHA256 signed 72-hour offline lease establishing future offline eligibility (explicitly does not claim offline billing).
   4. Local IndexedDB Partitioning: deterministic partition database per user, business, device enrolment, and dataset epoch (`bms_${userId}_${businessId}_${enrollmentId}_ep${datasetEpoch}`); permitted identity bootstrap downloaded and ingested; strict exclusion of secrets verified; session logout and business switching close active DB instances and clear client cache.
   5. Sample Workspace Isolation: completely client-side in memory; zero `/v1/` network calls during unauthenticated browsing or sample exploration; session hydration gated on `bms_csrf` cookie existence so unauthenticated or sample browsing never triggers `/v1/` calls or console errors.
-- Validation:
-  - `pnpm check`: passed ESLint 10 (0 errors, 0 warnings), TypeScript strict checks across all 7 workspace packages, production builds (API ESM bundle and Web Vite bundle), and 8 unit tests in `pnpm test`.
-  - `pnpm test:db`: passed 3 real PostgreSQL test suites (`tests/db.test.ts`, `tests/db-isolation.test.ts`, `tests/identity-api.test.ts`) using the restricted `bms_runtime` role.
-  - `pnpm test:runtime`: passed 1 compiled API startup and HTTP health readiness check against PostgreSQL.
-  - `pnpm test:e2e`: passed **12 Playwright tests** across 1366×768, 1920×1080, and 390×844 viewports (covering navigation, sample workspace isolation, filter composition, and M02 settings/registration).
-  - Screenshots in `docs/evidence/m02/`: `settings-signin-1366x768.png` and `settings-register-1366x768.png`.
-- Migration/rollback: Initial SQL migration `20261015000000_init_identity_and_devices` applied via `prisma migrate deploy`. Rollback requires dropping schema or rolling down migration. No changes made to sample data fixtures.
-- Limits: Offline leases establish eligibility only; offline transactions, offline billing, and sync replication are NOT implemented (reserved for M06). No hardware printers/scanners tested without physical hardware.
+
+## M02 Repair: Authentication, Isolation and Provisioning Evidence
+
+- Branch: `fix/m02-auth-and-isolation`, created from latest merged `main` (`ee0752f`). Open PR: [#4](https://github.com/uzair592/buisness-management-software/pull/4).
+- Confirmed Findings and Tested Repairs:
+  1. **Revoked Membership Access Removal**: `getSessionByToken` now strictly validates that `session.selectedBusinessId` matches an active membership of the user. If membership in that business was removed or revoked, `selectedBusinessId` and `activeMembership` are cleared to `null` and persisted to the database. Tenant requests require an active matching membership (`requireTenantContext`), preventing revoked users from reading locations or managing devices.
+  2. **Restricted Runtime Role Operation**: Addressed unscoped membership and session hydration queries under `bms_runtime`. Migrated registration flow so user, business, location, owner membership, prefix registry, and audit event creation run within tenant context (`withTenantContext`) without requiring `bypassRls: true`.
+  3. **Real Browser Authentication E2E**: Configured `/v1` and `/health` proxies in `apps/web/vite.config.ts` for both development and production preview. Configured Playwright `webServer` to launch the compiled API against native PostgreSQL. Added full browser E2E test in `tests/e2e/identity-and-devices.spec.ts` testing owner registration, reload persistence, device binding, IndexedDB bootstrap, password change, logout, and login with updated credentials.
+  4. **Device, Membership and Location Scope Enforcement**:
+     - Verified `ROLE_CAPABILITIES[role].includes("offline:lease")`; non-permitted roles (Viewer) receive 403 on lease requests and `lease: null` in bootstrap responses.
+     - Scoped location queries return only assigned location for non-owner members with `membership.locationId`.
+     - Deliberate device binding implemented via `bms_device_binding_${businessId}` in `localStorage`.
+     - Dynamic server-provided `datasetEpoch` replaces hardcoded epoch 1.
+     - Enforced device membership assignment: devices enrolled for a specific member cannot be leased or bootstrapped by other users (`403 Forbidden`). Tested two Cashiers at the same location (Bob and Dave): Dave cannot lease or bootstrap Bob's device.
+     - Lease invariants: `/v1/sync/bootstrap` strictly validates that returned or issued leases match the caller's membership, business dataset epoch, and membership permission version. Bumping `datasetEpoch` or `permissionVersion` invalidates old leases and generates new leases with the updated metadata.
+     - On authority rejection (401/403) or business switch, UI state and verified bootstrap metadata are cleared and the active local database partition is cleanly closed via `closeActiveLocalDb()`.
+  5. **Authentication Throttling & Trusted Proxy Configuration**:
+     - `apps/api/src/app.ts` defaults `trustProxy` to safe `false` for direct connections. Proxy trust is allowed only through explicit, validated deployment configuration (`TRUST_PROXY` in `env.ts` and `server.ts`).
+     - Added test verifying that under the default setup, rotating `X-Forwarded-For` headers cannot change the effective client IP or evade source throttling (10 failed attempts trigger 429 on the 11th).
+     - Enforced account-level rate limits (5 failures) alongside trusted source IP limits (10 failures). Successful login resets only the user's `accountKey` rate-limiting bucket without wiping source abuse tracking.
+  6. **Arbitrary Database Name Provisioning & Safe Migration Upgrade Path**:
+     - Removed hardcoded `bms` database requirement from migration `20261015000000_init_identity_and_devices/migration.sql` and `packages/db/src/provision.ts`. Connection grant now dynamically uses `current_database()`.
+     - Migration 1 creates role `bms_runtime` without a default password; `provision.ts` configures runtime password and enforces non-default secure password in production.
+     - Preserves safe upgrade path for existing databases via migration `20261016120000_repair_runtime_provisioning_and_isolation`.
+     - Added automated regression test in `tests/db.test.ts` verifying fresh installation on an arbitrarily named database (`bms_arb_*`), testing rejection of default passwords in production mode, provisioning, Prisma migration deploy, and connecting as `bms_runtime` with custom credentials without creating or touching an extra `bms` database.
+  7. **Local Cache Initialization & No Guessed Epoch**:
+     - In `SettingsPage.tsx`, removed guessed epoch `1` fallback when loading bound device cache. Requires verified bootstrap metadata in local storage (`userId`, `businessId`, `enrollmentId`, numeric `datasetEpoch`) matching the current authenticated user and bound device before opening the scoped partition.
+     - Added unit regression test in `tests/local-db.test.ts` verifying partition resolution rejects missing or tampered metadata and never guesses epoch 1.
+  8. **Comprehensive Verification**:
+     - `pnpm check`: Passed ESLint 10 (0 warnings/errors), strict typechecking across all workspace packages and tests, API & web builds, and 9 unit tests.
+     - `pnpm test:db`: Passed 4 real PostgreSQL test suites (`tests/db.test.ts`, `tests/db-isolation.test.ts`, `tests/identity-api.test.ts`) under `bms_runtime` including arbitrary DB provisioning and two-user same-location device isolation.
+     - `pnpm test:runtime`: Passed compiled API startup and database readiness test.
+     - `pnpm test:e2e`: Passed all 13 Playwright browser tests across 1366×768, 1920×1080, and 390×844 viewports.
+- Migration/Provisioning Instructions:
+  - Run `pnpm db:provision` to create or update the `bms_runtime` role with dynamic permissions on the active database using `BMS_RUNTIME_PASSWORD`.
+  - Run `pnpm db:migrate` (which runs provisioning followed by `prisma migrate deploy`).
 
 ## M00 validation
 

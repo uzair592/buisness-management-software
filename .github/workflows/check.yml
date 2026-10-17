@@ -18,6 +18,7 @@ jobs:
           --health-interval 3s --health-timeout 3s --health-retries 20
     env:
       DATABASE_URL: postgresql://bms_local:bms_local@127.0.0.1:5432/bms
+      BMS_RUNTIME_PASSWORD: bms_runtime_pass_change_in_production
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4

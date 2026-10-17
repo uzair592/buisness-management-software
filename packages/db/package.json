@@ -6,6 +6,7 @@
   "exports": "./src/index.ts",
   "scripts": {
     "generate": "prisma generate",
+    "provision": "tsx src/provision.ts",
     "migrate": "prisma migrate deploy",
     "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit"

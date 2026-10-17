@@ -1,4 +1,8 @@
-import Fastify, { type FastifyInstance, type FastifyRequest, type FastifyReply } from "fastify";
+import Fastify, {
+  type FastifyInstance,
+  type FastifyRequest,
+  type FastifyReply,
+} from "fastify";
 import fastifyCookie from "@fastify/cookie";
 import {
   healthSchema,
@@ -39,6 +43,7 @@ export interface CreateAppOptions {
   sessionSecret?: string;
   leaseSecret?: string;
   isProduction?: boolean;
+  trustProxy?: boolean | string | string[] | ((address: string, hop: number) => boolean);
 }
 
 declare module "fastify" {
@@ -59,6 +64,7 @@ export function createApp(
   let sessionSecret = "development_secret_at_least_32_characters_long_bms!";
   let leaseSecret = "development_lease_secret_at_least_32_characters_long!";
   let isProduction = false;
+  let trustProxy: boolean | string | string[] | ((address: string, hop: number) => boolean) = false;
 
   if (typeof optionsOrCheckDb === "function") {
     checkDatabase = optionsOrCheckDb;
@@ -81,9 +87,10 @@ export function createApp(
     if (opts.sessionSecret) sessionSecret = opts.sessionSecret;
     if (opts.leaseSecret) leaseSecret = opts.leaseSecret;
     if (opts.isProduction) isProduction = opts.isProduction;
+    if (opts.trustProxy !== undefined) trustProxy = opts.trustProxy;
   }
 
-  const app = Fastify({ logger: false, requestTimeout: 5000, trustProxy: true });
+  const app = Fastify({ http2: false, logger: false, requestTimeout: 5000, trustProxy });
 
   void app.register(fastifyCookie, {
     secret: sessionSecret,
@@ -143,6 +150,24 @@ export function createApp(
     return true;
   }
 
+  type TenantContextResult = {
+    businessId: string;
+    membership: NonNullable<SessionState["activeMembership"]>;
+  };
+
+  function requireTenantContext(
+    request: AuthenticatedRequest,
+    reply: FastifyReply,
+  ): TenantContextResult | null {
+    const businessId = request.session.selectedBusinessId;
+    const membership = request.activeMembership;
+    if (!businessId || !membership || membership.businessId !== businessId) {
+      void reply.code(403).send({ error: "Active business membership required" });
+      return null;
+    }
+    return { businessId, membership };
+  }
+
   function verifyCsrf(request: FastifyRequest, reply: FastifyReply): boolean {
     if (["POST", "PUT", "PATCH", "DELETE"].includes(request.method)) {
       const headerToken = request.headers["x-csrf-token"];
@@ -198,56 +223,68 @@ export function createApp(
     }
 
     const passwordHash = await hashPassword(password);
+    const businessId = crypto.randomUUID();
+    const userId = crypto.randomUUID();
+    const locationId = crypto.randomUUID();
+    const membershipId = crypto.randomUUID();
 
-    // Bootstrap owner account, business, default location, and owner membership
-    const result = await withTenantContext(client, { bypassRls: true }, async (tx) => {
-      const user = await tx.user.create({
-        data: {
-          username,
-          passwordHash,
-          fullName,
-          email: email || null,
-        },
-      });
+    // Bootstrap owner account, business, default location, and owner membership under least-privilege tenant context
+    const result = await withTenantContext(
+      client,
+      { businessId, userId },
+      async (tx) => {
+        const user = await tx.user.create({
+          data: {
+            id: userId,
+            username,
+            passwordHash,
+            fullName,
+            email: email || null,
+          },
+        });
 
-      const business = await tx.business.create({
-        data: {
-          name: businessName,
-          currency,
-          timezone,
-          datasetEpoch: 1,
-        },
-      });
+        const business = await tx.business.create({
+          data: {
+            id: businessId,
+            name: businessName,
+            currency,
+            timezone,
+            datasetEpoch: 1,
+          },
+        });
 
-      const location = await tx.location.create({
-        data: {
-          businessId: business.id,
-          code: "L01",
-          name: "Main Branch",
-        },
-      });
+        const location = await tx.location.create({
+          data: {
+            id: locationId,
+            businessId,
+            code: "L01",
+            name: "Main Branch",
+          },
+        });
 
-      const membership = await tx.membership.create({
-        data: {
-          businessId: business.id,
-          userId: user.id,
-          role: "Owner",
-          locationId: location.id,
-          permissionVersion: 1,
-        },
-      });
+        const membership = await tx.membership.create({
+          data: {
+            id: membershipId,
+            businessId,
+            userId,
+            role: "Owner",
+            locationId,
+            permissionVersion: 1,
+          },
+        });
 
-      await tx.auditEvent.create({
-        data: {
-          businessId: business.id,
-          userId: user.id,
-          action: "user.create",
-          details: { username, role: "Owner" },
-        },
-      });
+        await tx.auditEvent.create({
+          data: {
+            businessId,
+            userId,
+            action: "user.create",
+            details: { username, role: "Owner" },
+          },
+        });
 
-      return { user, business, location, membership };
-    });
+        return { user, business, location, membership };
+      },
+    );
 
     // Create session
     const ip = request.ip;
@@ -291,12 +328,13 @@ export function createApp(
     }
 
     const { username, password } = parseRes.data;
-    const clientIp =
-      (request.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ||
-      request.ip;
-    const rateLimitKey = `${clientIp}:${username}`;
+    // Finding 5: Do not trust arbitrary headers directly; use request.ip governed by trustProxy
+    const clientIp = request.ip;
+    const sourceKey = `source:${clientIp}`;
+    const accountKey = `account:${username.toLowerCase().trim()}`;
 
-    if (isRateLimited(rateLimitKey) || isRateLimited(clientIp)) {
+    // Account-level limit (5 failures) and source IP limit (10 failures)
+    if (isRateLimited(accountKey, 5) || isRateLimited(sourceKey, 10)) {
       return reply.code(429).send({
         error: "Too many failed login attempts. Please wait a minute before retrying.",
       });
@@ -307,13 +345,14 @@ export function createApp(
     });
 
     if (!user || !(await verifyPassword(password, user.passwordHash))) {
-      recordFailedAttempt(rateLimitKey);
-      recordFailedAttempt(clientIp);
+      recordFailedAttempt(accountKey);
+      recordFailedAttempt(sourceKey);
       return reply.code(401).send({ error: "Invalid username or password" });
     }
 
-    resetRateLimit(rateLimitKey);
-    resetRateLimit(clientIp);
+    // Reset ONLY account-level limits for successful user.
+    // Do NOT reset source-level limits, preventing erasure of unrelated abuse protection.
+    resetRateLimit(accountKey);
 
     const ua = request.headers["user-agent"];
     const sessionRes = await createSession(client, user.id, ua, clientIp);
@@ -492,14 +531,20 @@ export function createApp(
       await revokeOtherSessions(client, user.id, request.session.id);
     }
 
-    await client.auditEvent.create({
-      data: {
-        userId: user.id,
-        businessId: request.session.selectedBusinessId,
-        action: "credential.change",
-        details: { revokedOtherSessions: shouldRevokeOthers },
+    await withTenantContext(
+      client,
+      { userId: user.id, businessId: request.session.selectedBusinessId ?? undefined },
+      async (tx) => {
+        await tx.auditEvent.create({
+          data: {
+            userId: user.id,
+            businessId: request.session.selectedBusinessId,
+            action: "credential.change",
+            details: { revokedOtherSessions: shouldRevokeOthers },
+          },
+        });
       },
-    });
+    );
 
     return reply.code(200).send({ success: true });
   });
@@ -551,18 +596,23 @@ export function createApp(
 
   app.get("/v1/locations", async (request, reply) => {
     if (!requireAuth(request, reply)) return;
+    const tenant = requireTenantContext(request, reply);
+    if (!tenant) return;
     const client = requireDb();
-    const businessId = request.session.selectedBusinessId;
-    if (!businessId) {
-      return reply.code(400).send({ error: "No business selected" });
-    }
 
     const locations = await withTenantContext(
       client,
-      { businessId, userId: request.user.id },
+      { businessId: tenant.businessId, userId: request.user.id },
       async (tx) => {
+        // Return only permitted locations (scoped to membership location if assigned)
+        if (tenant.membership.locationId && tenant.membership.role !== "Owner") {
+          return await tx.location.findMany({
+            where: { businessId: tenant.businessId, id: tenant.membership.locationId },
+            orderBy: { code: "asc" },
+          });
+        }
         return await tx.location.findMany({
-          where: { businessId },
+          where: { businessId: tenant.businessId },
           orderBy: { code: "asc" },
         });
       },
@@ -581,18 +631,16 @@ export function createApp(
 
   app.get("/v1/devices", async (request, reply) => {
     if (!requireAuth(request, reply)) return;
+    const tenant = requireTenantContext(request, reply);
+    if (!tenant) return;
     const client = requireDb();
-    const businessId = request.session.selectedBusinessId;
-    if (!businessId) {
-      return reply.code(400).send({ error: "No business selected" });
-    }
 
     const devices = await withTenantContext(
       client,
-      { businessId, userId: request.user.id },
+      { businessId: tenant.businessId, userId: request.user.id },
       async (tx) => {
         return await tx.deviceEnrollment.findMany({
-          where: { businessId },
+          where: { businessId: tenant.businessId },
           orderBy: { enrolledAt: "desc" },
         });
       },
@@ -616,14 +664,11 @@ export function createApp(
   app.post("/v1/devices/enroll", async (request, reply) => {
     if (!requireAuth(request, reply)) return;
     if (!verifyCsrf(request, reply)) return;
+    const tenant = requireTenantContext(request, reply);
+    if (!tenant) return;
     const client = requireDb();
-    const businessId = request.session.selectedBusinessId;
-    if (!businessId) {
-      return reply.code(400).send({ error: "No business selected" });
-    }
 
-    const activeMembership = request.activeMembership;
-    if (!activeMembership || activeMembership.role !== "Owner") {
+    if (tenant.membership.role !== "Owner") {
       return reply.code(403).send({ error: "Only owners can enroll devices" });
     }
 
@@ -637,8 +682,8 @@ export function createApp(
 
     try {
       const enrollment = await enrollDevice(client, {
-        businessId,
-        membershipId: activeMembership.id,
+        businessId: tenant.businessId,
+        membershipId: tenant.membership.id,
         locationId: parseRes.data.locationId,
         deviceName: parseRes.data.deviceName,
         numberPrefix: parseRes.data.numberPrefix,
@@ -665,13 +710,11 @@ export function createApp(
   app.post("/v1/devices/revoke", async (request, reply) => {
     if (!requireAuth(request, reply)) return;
     if (!verifyCsrf(request, reply)) return;
+    const tenant = requireTenantContext(request, reply);
+    if (!tenant) return;
     const client = requireDb();
-    const businessId = request.session.selectedBusinessId;
-    if (!businessId) {
-      return reply.code(400).send({ error: "No business selected" });
-    }
 
-    if (request.activeMembership?.role !== "Owner") {
+    if (tenant.membership.role !== "Owner") {
       return reply.code(403).send({ error: "Only owners can revoke devices" });
     }
 
@@ -682,7 +725,7 @@ export function createApp(
 
     try {
       const revoked = await revokeDevice(client, {
-        businessId,
+        businessId: tenant.businessId,
         deviceEnrollmentId: parseRes.data.deviceEnrollmentId,
         actorUserId: request.user.id,
         reason: parseRes.data.reason,
@@ -703,15 +746,15 @@ export function createApp(
   app.post("/v1/devices/lease", async (request, reply) => {
     if (!requireAuth(request, reply)) return;
     if (!verifyCsrf(request, reply)) return;
+    const tenant = requireTenantContext(request, reply);
+    if (!tenant) return;
     const client = requireDb();
-    const businessId = request.session.selectedBusinessId;
-    if (!businessId) {
-      return reply.code(400).send({ error: "No business selected" });
-    }
 
-    const activeMembership = request.activeMembership;
-    if (!activeMembership) {
-      return reply.code(400).send({ error: "No active membership" });
+    // Finding 4: Enforce capability check (A Viewer must not obtain an owner's lease or issue offline authority)
+    const role = tenant.membership.role as Role;
+    const capabilities = ROLE_CAPABILITIES[role] ?? [];
+    if (!capabilities.includes("offline:lease")) {
+      return reply.code(403).send({ error: "Membership lacks offline lease capability" });
     }
 
     const parseRes = requestLeaseSchema.safeParse(request.body);
@@ -719,11 +762,36 @@ export function createApp(
       return reply.code(400).send({ error: "Validation failed" });
     }
 
+    // Verify device belongs to this business and matches location if membership is location-scoped
+    const device = await withTenantContext(
+      client,
+      { businessId: tenant.businessId, userId: request.user.id },
+      async (tx) => {
+        return await tx.deviceEnrollment.findFirst({
+          where: { id: parseRes.data.deviceEnrollmentId, businessId: tenant.businessId },
+        });
+      },
+    );
+
+    if (!device || device.status !== "Enrolled") {
+      return reply.code(403).send({ error: "Device is not enrolled or has been revoked" });
+    }
+
+    if (device.membershipId !== tenant.membership.id) {
+      return reply.code(403).send({ error: "Device is enrolled for another membership" });
+    }
+
+    if (tenant.membership.locationId && tenant.membership.role !== "Owner") {
+      if (device.locationId !== tenant.membership.locationId) {
+        return reply.code(403).send({ error: "Device location does not match membership scope" });
+      }
+    }
+
     try {
       const lease = await issueOfflineLease(client, leaseSecret, {
-        businessId,
+        businessId: tenant.businessId,
         deviceEnrollmentId: parseRes.data.deviceEnrollmentId,
-        membershipId: activeMembership.id,
+        membershipId: tenant.membership.id,
       });
 
       return reply.code(200).send({
@@ -748,60 +816,83 @@ export function createApp(
 
   app.get("/v1/sync/bootstrap", async (request, reply) => {
     if (!requireAuth(request, reply)) return;
+    const tenant = requireTenantContext(request, reply);
+    if (!tenant) return;
     const client = requireDb();
-    const businessId = request.session.selectedBusinessId;
-    if (!businessId) {
-      return reply.code(400).send({ error: "No business selected" });
-    }
-
-    const activeMembership = request.activeMembership;
-    if (!activeMembership) {
-      return reply.code(400).send({ error: "No active membership" });
-    }
 
     const { deviceEnrollmentId } = request.query as { deviceEnrollmentId?: string };
     if (!deviceEnrollmentId) {
       return reply.code(400).send({ error: "deviceEnrollmentId query parameter required" });
     }
 
-    const device = await client.deviceEnrollment.findFirst({
-      where: { id: deviceEnrollmentId, businessId },
-    });
+    const { device, business, locations, existingLease } = await withTenantContext(
+      client,
+      { businessId: tenant.businessId, userId: request.user.id },
+      async (tx) => {
+        const d = await tx.deviceEnrollment.findFirst({
+          where: { id: deviceEnrollmentId, businessId: tenant.businessId },
+        });
+
+        const b = await tx.business.findUniqueOrThrow({
+          where: { id: tenant.businessId },
+        });
+
+        const locs = await tx.location.findMany({
+          where: {
+            businessId: tenant.businessId,
+            ...(tenant.membership.locationId && tenant.membership.role !== "Owner"
+              ? { id: tenant.membership.locationId }
+              : {}),
+          },
+          orderBy: { code: "asc" },
+        });
+
+        const l = await tx.offlineLease.findFirst({
+          where: {
+            businessId: tenant.businessId,
+            deviceEnrollmentId,
+            membershipId: tenant.membership.id,
+            datasetEpoch: b.datasetEpoch,
+            policyVersion: tenant.membership.permissionVersion,
+            revokedAt: null,
+            expiresAt: { gt: new Date() },
+          },
+          orderBy: { issuedAt: "desc" },
+        });
+
+        return { device: d, business: b, locations: locs, existingLease: l };
+      },
+    );
 
     if (!device || device.status !== "Enrolled") {
       return reply.code(403).send({ error: "Device is not enrolled or has been revoked" });
     }
 
-    const business = await client.business.findUniqueOrThrow({
-      where: { id: businessId },
-    });
-
-    const locations = await client.location.findMany({
-      where: { businessId },
-      orderBy: { code: "asc" },
-    });
-
-    // Check if device has an active offline lease, or issue a new one
-    let lease = await client.offlineLease.findFirst({
-      where: {
-        businessId,
-        deviceEnrollmentId,
-        revokedAt: null,
-        expiresAt: { gt: new Date() },
-      },
-      orderBy: { issuedAt: "desc" },
-    });
-
-    if (!lease) {
-      lease = await issueOfflineLease(client, leaseSecret, {
-        businessId,
-        deviceEnrollmentId,
-        membershipId: activeMembership.id,
-      });
+    if (device.membershipId !== tenant.membership.id) {
+      return reply.code(403).send({ error: "Device is enrolled for another membership" });
     }
 
-    const role = activeMembership.role as Role;
+    if (tenant.membership.locationId && tenant.membership.role !== "Owner") {
+      if (device.locationId !== tenant.membership.locationId) {
+        return reply.code(403).send({ error: "Device location does not match membership scope" });
+      }
+    }
+
+    const role = tenant.membership.role as Role;
     const capabilities = ROLE_CAPABILITIES[role] ?? [];
+    const canLease = capabilities.includes("offline:lease");
+
+    let lease = null;
+    if (canLease) {
+      lease = existingLease;
+      if (!lease) {
+        lease = await issueOfflineLease(client, leaseSecret, {
+          businessId: tenant.businessId,
+          deviceEnrollmentId,
+          membershipId: tenant.membership.id,
+        });
+      }
+    }
 
     return reply.code(200).send({
       business: {
@@ -812,13 +903,13 @@ export function createApp(
         datasetEpoch: business.datasetEpoch,
       },
       membership: {
-        id: activeMembership.id,
-        businessId: activeMembership.businessId,
-        businessName: activeMembership.business.name,
-        role: activeMembership.role,
-        permissionVersion: activeMembership.permissionVersion,
-        locationId: activeMembership.locationId,
-        locationName: activeMembership.location?.name ?? null,
+        id: tenant.membership.id,
+        businessId: tenant.membership.businessId,
+        businessName: tenant.membership.business.name,
+        role: tenant.membership.role,
+        permissionVersion: tenant.membership.permissionVersion,
+        locationId: tenant.membership.locationId,
+        locationName: tenant.membership.location?.name ?? null,
       },
       device: {
         id: device.id,
@@ -831,18 +922,20 @@ export function createApp(
         enrolledAt: device.enrolledAt.toISOString(),
         revokedAt: device.revokedAt ? device.revokedAt.toISOString() : null,
       },
-      lease: {
-        id: lease.id,
-        businessId: lease.businessId,
-        deviceEnrollmentId: lease.deviceEnrollmentId,
-        membershipId: lease.membershipId,
-        datasetEpoch: lease.datasetEpoch,
-        policyVersion: lease.policyVersion,
-        issuedAt: lease.issuedAt.toISOString(),
-        expiresAt: lease.expiresAt.toISOString(),
-        revokedAt: lease.revokedAt ? lease.revokedAt.toISOString() : null,
-        signature: lease.signature,
-      },
+      lease: lease
+        ? {
+            id: lease.id,
+            businessId: lease.businessId,
+            deviceEnrollmentId: lease.deviceEnrollmentId,
+            membershipId: lease.membershipId,
+            datasetEpoch: lease.datasetEpoch,
+            policyVersion: lease.policyVersion,
+            issuedAt: lease.issuedAt.toISOString(),
+            expiresAt: lease.expiresAt.toISOString(),
+            revokedAt: lease.revokedAt ? lease.revokedAt.toISOString() : null,
+            signature: lease.signature,
+          }
+        : null,
       permittedLocations: locations.map((loc) => ({
         id: loc.id,
         code: loc.code,

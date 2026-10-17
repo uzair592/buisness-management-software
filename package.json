@@ -17,15 +17,18 @@
     "test:e2e": "playwright test",
     "check": "pnpm lint && pnpm typecheck && pnpm build && pnpm test",
     "db:generate": "pnpm --filter @business/db generate",
-    "db:migrate": "pnpm --filter @business/db migrate"
+    "db:provision": "pnpm --filter @business/db provision",
+    "db:migrate": "pnpm db:provision && pnpm --filter @business/db migrate"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.0",
     "@playwright/test": "^1.58.0",
     "@types/node": "^22.19.0",
+    "@types/pg": "^8.23.1",
     "eslint": "^10.0.0",
     "fake-indexeddb": "6.2.5",
     "globals": "^16.5.0",
+    "pg": "^8.23.1",
     "prettier": "^3.9.10",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
