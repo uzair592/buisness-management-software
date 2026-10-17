@@ -9,7 +9,7 @@ Last planning update: 2026-10-15.
 | M01 UI refinement | Complete; PR #2 merged | [Screenshots and original checks](docs/evidence/m01-ui-refinement/README.md); [filter-race repair and passing CI](docs/evidence/m01-ui-refinement/ci-filter-fix.md); isolated sample interactions only |
 | M02 Identity and devices | Core complete; PR #3, #4 and #5 merged | [M02 evidence](docs/evidence/m02/README.md); Prisma 7 prerequisite, global username auth, PostgreSQL RLS under restricted `bms_runtime`, composite FKs, device enrolment/signed leases, partitioned IndexedDB bootstrap, verified upgrade and fresh installation paths; historical checksum mismatch remains for upgraded PR #3 databases |
 | M03 Domain and journal | Foundation on main; cursor integration in progress | PR #7 restored the M03 foundation to main. This branch serializes device configuration writes with posting cursors; full milestone acceptance remains open. |
-| M04 Catalogue and opening balances | Not started | — |
+| M04 Catalogue and opening balances | In progress on milestone branch | Initial tenant-scoped categories, units, tax profiles, item conversions, items and parties with API CRUD/version checks; opening balances, accounts, UI and sync read models remain pending |
 | M05 First sale | Not started | — |
 | M06 Offline and two-device sync | Not started | — |
 | M07 Purchases and money | Not started | — |
@@ -23,7 +23,7 @@ Last planning update: 2026-10-15.
 
 ## Next action
 
-Review the M03 business cursor change and finish [Milestone 03: Domain and journal](prompts/03-domain-and-journal.md) acceptance gates. M02 establishes username authentication, database/API tenant isolation under a restricted role, device enrolment, signed leases, and local IndexedDB partitioning; it does not claim offline billing or sync replication (scheduled for later milestones).
+Continue [Milestone 04: Catalogue and opening balances](prompts/04-catalogue-and-opening.md), while tracking remaining M03 valuation and accounting fixtures. M02 establishes username authentication, database/API tenant isolation under a restricted role, device enrolment, signed leases, and local IndexedDB partitioning; it does not claim offline billing or sync replication (scheduled for later milestones).
 
 PR #7 [restored the M03 foundation onto main](https://github.com/uzair592/buisness-management-software/pull/7) after PR #6 had been merged into the PR #5 branch without reaching main. This branch adds the shared sync-head protocol to device enrolment, revocation and lease issuance. Account registration establishes the initial business baseline at cursor zero; user credentials and sessions are account-scoped rather than tenant change batches. Financial postings continue through the journal dispatcher. Full stock valuation and all accounting fixtures remain open, and there is no operational sale. The M02 migration history limitation documented below still applies to databases created before PR #4.
 
