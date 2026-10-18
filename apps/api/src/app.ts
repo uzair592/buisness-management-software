@@ -1024,7 +1024,7 @@ export function createApp(
         // action. Expose only a location-scoped receipt summary here: the saved
         // snapshot includes private cost and must not enter a cashier cache.
         const sourceEventId = typeof payload.sourceEventId === "string" ? payload.sourceEventId : null;
-        if (sourceEventId) {
+        if (!action && sourceEventId) {
           const sale = await tx.saleDocument.findFirst({ where: { businessId: tenant.businessId,
             sourceEventId, status: "Posted",
             ...(tenant.membership.locationId && tenant.membership.role !== "Owner"
