@@ -172,6 +172,25 @@ test("M04 catalogue persists, isolates tenants, enforces versions and sellable r
   const reloaded = await send(a, "GET", "/v1/catalogue/items?q=Mineral&page=1");
   assert.equal(reloaded.statusCode, 200, reloaded.body);
   assert.equal(reloaded.json().rows[0].version, 2);
+  for (let index = 0; index < 27; index++) {
+    const created = await send(a, "POST", "/v1/catalogue/items", {
+      ...itemData, name: `Setup stock ${String(index).padStart(2, "0")}`,
+      sku: `SETUP-${index}`, barcode: `SETUP-BARCODE-${index}`,
+    });
+    assert.equal(created.statusCode, 201, created.body);
+  }
+  const choices = await send(a, "GET", "/v1/catalogue/choices?kind=items&role=Stock&q=Setup%20stock&page=1");
+  assert.equal(choices.statusCode, 200, choices.body);
+  assert.equal(choices.json().rows.length, 25);
+  assert.equal(choices.json().hasMore, true);
+  const secondPage = await send(a, "GET", "/v1/catalogue/choices?kind=items&role=Stock&q=Setup%20stock&page=2");
+  assert.equal(secondPage.json().rows.length, 2);
+  assert.equal(secondPage.json().hasMore, false);
+  assert.equal((await send(b, "GET", "/v1/catalogue/choices?kind=items&role=Stock&q=Setup%20stock&page=1")).json().rows.length, 0);
+  assert.equal((await send(a, "GET", "/v1/catalogue/choices?kind=items&role=Payable")).statusCode, 400);
+  const dueChoices = await send(a, "GET", "/v1/catalogue/choices?kind=parties&role=Receivable&q=Local");
+  assert.equal(dueChoices.statusCode, 200, dueChoices.body);
+  assert.equal(dueChoices.json().rows.length, 0); // archived parties are excluded
   const changes = await withTenantContext(db, { businessId: a.id }, async (tx) =>
     tx.changeBatch.findMany({ where: { businessId: a.id }, orderBy: { cursor: "asc" } }));
   assert.ok(changes.length >= 16);

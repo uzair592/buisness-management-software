@@ -1101,9 +1101,9 @@ export function createApp(
     const { q, page } = query.data;
     const rows = await withTenantContext(requireDb(), tenant, async (tx) => tx.party.findMany({
       where: { businessId: tenant.businessId, archivedAt: null, name: { contains: q, mode: "insensitive" } },
-      orderBy: [{ name: "asc" }, { id: "asc" }], skip: (page - 1) * 25, take: 25,
+      orderBy: [{ name: "asc" }, { id: "asc" }], skip: (page - 1) * 25, take: 26,
     }));
-    return { rows, page };
+    return { rows: rows.slice(0, 25), page, hasMore: rows.length > 25 };
   });
 
   app.post("/v1/catalogue/parties", async (request, reply) => {
@@ -1157,6 +1157,39 @@ export function createApp(
       units: await tx.unit.findMany({ where: { businessId: tenant.businessId, archivedAt: null }, orderBy: { code: "asc" } }),
       taxProfiles: await tx.taxProfile.findMany({ where: { businessId: tenant.businessId, archivedAt: null }, orderBy: { name: "asc" } }),
     }));
+  });
+
+  // Bounded choices for setup forms: do not download the entire catalogue to a device.
+  app.get("/v1/catalogue/choices", async (request, reply) => {
+    const tenant = masterContext(request, reply, false);
+    if (!tenant) return;
+    const parsed = listQuery.extend({ kind: z.enum(["items", "parties"]),
+      role: z.enum(["Stock", "Receivable", "Payable"]) }).safeParse(request.query);
+    if (!parsed.success) return reply.code(400).send({ error: "Invalid choice query" });
+    const { kind, q, page, role } = parsed.data;
+    if ((kind === "items") !== (role === "Stock")) return reply.code(400).send({ error: "Invalid choice role" });
+    return withTenantContext(requireDb(), tenant, async (tx) => {
+      const where = kind === "items" ? { businessId: tenant.businessId, archivedAt: null, kind: "Goods",
+        OR: [{ name: { contains: q, mode: "insensitive" as const } }, { barcode: { contains: q } }] } :
+        { businessId: tenant.businessId, archivedAt: null, ...(role === "Receivable" ? { isCustomer: true } : { isSupplier: true }),
+          name: { contains: q, mode: "insensitive" as const } };
+      const rows = kind === "items" ? await tx.item.findMany({ where, select: { id: true, name: true, kind: true },
+        orderBy: [{ name: "asc" }, { id: "asc" }], skip: (page - 1) * 25, take: 26 }) :
+        await tx.party.findMany({ where, select: { id: true, name: true, isCustomer: true, isSupplier: true },
+          orderBy: [{ name: "asc" }, { id: "asc" }], skip: (page - 1) * 25, take: 26 });
+      return { rows: rows.slice(0, 25), page, hasMore: rows.length > 25 };
+    });
+  });
+
+  app.get("/v1/catalogue/conversions", async (request, reply) => {
+    const tenant = masterContext(request, reply, false);
+    if (!tenant) return;
+    const parsed = z.object({ itemId: z.uuid() }).safeParse(request.query);
+    if (!parsed.success) return reply.code(400).send({ error: "Invalid item" });
+    return withTenantContext(requireDb(), tenant, async (tx) => ({ rows: await tx.itemUnitConversion.findMany({
+      where: { businessId: tenant.businessId, itemId: parsed.data.itemId, archivedAt: null },
+      orderBy: { id: "asc" }, select: { id: true, unitId: true, factor: true, version: true },
+    }) }));
   });
 
   app.post("/v1/catalogue/categories", async (request, reply) => {
@@ -1244,9 +1277,9 @@ export function createApp(
     const rows = await withTenantContext(requireDb(), tenant, async (tx) => tx.item.findMany({
       where: { businessId: tenant.businessId, archivedAt: null,
         OR: [{ name: { contains: q, mode: "insensitive" } }, { barcode: { contains: q } }] },
-      orderBy: [{ name: "asc" }, { id: "asc" }], skip: (page - 1) * 25, take: 25,
+      orderBy: [{ name: "asc" }, { id: "asc" }], skip: (page - 1) * 25, take: 26,
     }));
-    return { rows, page };
+    return { rows: rows.slice(0, 25), page, hasMore: rows.length > 25 };
   });
 
   app.post("/v1/catalogue/items", async (request, reply) => {
