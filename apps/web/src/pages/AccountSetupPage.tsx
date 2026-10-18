@@ -66,10 +66,15 @@ export function AccountSetupPage() {
   const [businessDate, setBusinessDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [entries, setEntries] = useState<Entry[]>([blankEntry()]);
   const [preview, setPreview] = useState<OpeningPreview | null>(null);
-  useEffect(() => { setPreview(null); setEntries([blankEntry()]); setBatchId(crypto.randomUUID()); }, [auth.selectedBusinessId]);
+  useEffect(() => {
+    setPreview(null); setEntries([blankEntry()]); setBatchId(crypto.randomUUID());
+    setAccounts([]); setCategories([]); setLocations([]); setPosted(null); setLoading(true);
+  }, [auth.selectedBusinessId]);
 
   const load = useCallback(async (signal?: AbortSignal) => {
-    setLoading(true); setError("");
+    // Keep the form mounted during a same-business refresh. Unmounting it here
+    // can discard entries a user types while an account setup request completes.
+    setError("");
     try {
       const responses = await Promise.all([
         fetch("/v1/accounts/setup", { signal }), fetch("/v1/locations", { signal }),
