@@ -59,7 +59,9 @@ export function LiveSalesPage() {
           <td><b>{row.number ?? "Draft"}</b><small className="cell-subtitle">{row.status} · {row.status === "Posted" ? "Cloud saved" : "Not issued"}</small></td>
           <td>{row.party?.name ?? "Walk-in"}</td><td>{row.businessDate.slice(0, 10)}</td>
           <td>{row.status === "Draft" ? "Pending" : row.due === "0" || row.due === "0.00" ? "Paid" : "Part credit"}</td>
-          <td className="amount">{row.total ?? "—"}</td><td><button className="btn-ghost" onClick={() => update({ open: row.id })}>Open</button></td>
+          <td className="amount">{row.total ?? "—"}</td><td>{row.status === "Draft" ?
+            <Link className="btn-ghost" to={`/sales/new?draft=${row.id}`}>Resume</Link> :
+            <button className="btn-ghost" onClick={() => update({ open: row.id })}>Open</button>}</td>
         </tr>)}</Table>}
       <div className="live-pagination"><button className="btn-secondary" disabled={page <= 1} onClick={() => update({ page: String(page - 1) })}>Previous</button>
         <span>Page {page}</span><button className="btn-secondary" disabled={!hasMore} onClick={() => update({ page: String(page + 1) })}>Next</button></div>

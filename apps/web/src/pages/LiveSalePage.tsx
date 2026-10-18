@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { allocatePayment, calculateDocument } from "@business/domain";
 import { Panel } from "@business/ui";
 import { useAuth } from "../context/AuthContext";
@@ -24,6 +25,7 @@ const money = /^\d+(?:\.\d{1,2})?$/;
 
 export function LiveSalePage() {
   const auth = useAuth();
+  const [params, setParams] = useSearchParams();
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -53,6 +55,30 @@ export function LiveSalePage() {
     finally { if (!signal?.aborted) setLoading(false); }
   }, [auth.selectedBusinessId]);
   useEffect(() => { const controller = new AbortController(); void load(controller.signal); return () => controller.abort(); }, [load]);
+  useEffect(() => {
+    const draftId = params.get("draft");
+    if (!draftId || busy) return;
+    const controller = new AbortController();
+    void fetch(`/v1/sales/documents/${encodeURIComponent(draftId)}`, { signal: controller.signal })
+      .then((response) => { if (!response.ok) throw new Error("Saved draft could not be reopened.");
+        return response.json() as Promise<{ status: string; snapshot: SalePayload; number: string | null;
+          total: string | null; paid: string | null; due: string | null }>;
+      }).then((sale) => {
+        if (sale.status === "Posted") {
+          setIssued({ id: draftId, number: sale.number ?? "", total: sale.total ?? "0",
+            paid: sale.paid ?? "0", due: sale.due ?? "0", snapshot: sale.snapshot });
+          return;
+        }
+        const saved = sale.snapshot;
+        setPending(saved); setCart(saved.lines); setDeviceId(saved.deviceEnrollmentId);
+        setPartyId(saved.partyId ?? ""); setDocumentDiscount(saved.documentDiscount);
+        const cash = saved.payments.find((row) => row.kind === "Cash");
+        const bank = saved.payments.find((row) => row.kind === "Bank");
+        setCashAccount(cash?.accountId ?? ""); setCashApplied(cash?.applied ?? "0"); setCashTendered(cash?.tendered ?? "0");
+        setBankAccount(bank?.accountId ?? ""); setBankApplied(bank?.applied ?? "0"); setBankReference(bank?.reference ?? "");
+      }).catch((cause) => { if (cause instanceof Error && cause.name !== "AbortError") setError(cause.message); });
+    return () => controller.abort();
+  }, [params, busy, auth.selectedBusinessId]);
   const selectedDevice = workspace?.devices.find((device) => device.id === deviceId);
   const calculation = useMemo(() => {
     if (!workspace || !cart.length) return null;
@@ -97,6 +123,7 @@ export function LiveSalePage() {
           kind: "Bank" as const, applied: bankApplied, tendered: null, reference: bankReference.trim() }] : []),
       ] };
     setPending(payload); setBusy(true); setError("");
+    setParams({ draft: payload.id }, { replace: true });
     try {
       const draft = await fetch("/v1/sales/drafts", { method: "POST", headers: { "Content-Type": "application/json", "x-csrf-token": auth.csrfToken ?? "" }, body: JSON.stringify(payload) });
       if (!draft.ok) throw new Error((await draft.json() as { error?: string }).error ?? "Could not save the draft.");
@@ -111,6 +138,7 @@ export function LiveSalePage() {
   function reset() {
     setCart([]); setPartyId(""); setDocumentDiscount("0"); setCashApplied("0"); setCashTendered("0");
     setBankApplied("0"); setBankReference(""); setPending(null); setIssued(null); setError("");
+    setParams({}, { replace: true });
   }
   return <div className="live-billing">
     <div className="page-heading sale-heading"><div><p className="eyebrow"><Link to="/sales">SALES</Link> / NEW SALE</p>

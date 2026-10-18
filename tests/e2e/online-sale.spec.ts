@@ -52,4 +52,18 @@ test("M05 live billing saves a multi-line sale, reopens and prints its snapshot 
   const width = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, viewport: innerWidth }));
   expect(width.scroll).toBeLessThanOrEqual(width.viewport + 1);
   await page.screenshot({ path: testInfo.outputPath("billing-mobile-390.png"), fullPage: true });
+  const savedDraft = { id: crypto.randomUUID(), commandId: crypto.randomUUID(), deviceEnrollmentId: (await device.json()).id,
+    locationId, partyId: null, businessDate: "2026-10-18", documentDiscount: "0",
+    lines: [{ id: crypto.randomUUID(), itemId: (await service.json()).id, conversionId: null,
+      taxProfileId: null, quantity: "1", unitPrice: "3.00", discount: "0" }], payments: [
+      { id: crypto.randomUUID(), accountId: (await cash.json()).id, kind: "Cash", applied: "3.00", tendered: "3.00", reference: null },
+    ] };
+  expect((await post("/v1/sales/drafts", savedDraft)).status()).toBe(201);
+  await page.goto("/sales?status=Draft");
+  await page.getByRole("link", { name: "Resume" }).click();
+  await expect(page.getByText("Packaging")).toBeVisible();
+  await page.reload();
+  await expect(page.getByText("Packaging")).toBeVisible();
+  await page.getByRole("button", { name: "Retry saved sale" }).click();
+  await expect(page.getByText(/Saved: D\d+-000002/)).toBeVisible();
 });
