@@ -112,7 +112,7 @@ test.describe("M02 Identity, Authentication, and Settings UI", () => {
     // Trigger local IndexedDB bootstrap
     await page.getByRole("button", { name: "Bootstrap IndexedDB" }).first().click();
     await expect(
-      page.getByText("Bootstrap successful! Permitted data cached in partitioned IndexedDB."),
+      page.getByText("Permitted catalogue cached. Online billing remains required while offline issue is under development."),
     ).toBeVisible({ timeout: 10000 });
 
     // 7. Change password
