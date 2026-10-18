@@ -53,6 +53,9 @@ importers:
       '@business/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@business/domain':
+        specifier: workspace:*
+        version: link:../../packages/domain
       '@fastify/cookie':
         specifier: 11.1.3
         version: 11.1.3

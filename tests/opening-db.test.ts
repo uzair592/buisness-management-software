@@ -30,8 +30,8 @@ test("M04 opening preview and idempotent posting reconcile money, stock, dues an
   }
   const system = await send(owner, "POST", "/v1/accounts/system");
   assert.equal(system.statusCode, 200, system.body);
-  assert.equal(system.json().accounts.length, 4);
-  assert.equal((await send(owner, "POST", "/v1/accounts/system")).json().accounts.length, 4);
+  assert.equal(system.json().accounts.length, 7);
+  assert.equal((await send(owner, "POST", "/v1/accounts/system")).json().accounts.length, 7);
   const cash = await send(owner, "POST", "/v1/accounts", { code: "TILL", name: "Till", kind: "Cash" });
   const bank = await send(owner, "POST", "/v1/accounts", { code: "BANK", name: "Bank", kind: "Bank" });
   assert.equal(cash.statusCode, 201, cash.body);

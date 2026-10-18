@@ -53,6 +53,7 @@ model Business {
   taxProfiles            TaxProfile[]
   items                  Item[]
   parties                Party[]
+  sales                  SaleDocument[]
 
   @@map("businesses")
 }
@@ -68,6 +69,7 @@ model Location {
   deviceEnrollments DeviceEnrollment[]
   memberships       Membership[]
   stockMovements    StockMovement[]
+  saleDocuments     SaleDocument[]
 
   @@unique([businessId, id])
   @@unique([businessId, code])
@@ -120,6 +122,7 @@ model DeviceEnrollment {
   locationId    String         @map("location_id") @db.Uuid
   deviceName    String         @map("device_name") @db.VarChar(100)
   numberPrefix  String         @map("number_prefix") @db.VarChar(10)
+  saleSequence  BigInt         @default(0) @map("sale_sequence") @db.BigInt
   status        String         @default("Enrolled") @db.VarChar(20)
   enrolledAt    DateTime       @default(now()) @map("enrolled_at") @db.Timestamptz
   revokedAt     DateTime?      @map("revoked_at") @db.Timestamptz
@@ -129,6 +132,7 @@ model DeviceEnrollment {
   location      Location       @relation(fields: [businessId, locationId], references: [businessId, id], onDelete: Restrict)
   offlineLeases OfflineLease[]
   commandReceipts CommandReceipt[]
+  saleDocuments    SaleDocument[]
 
   @@unique([businessId, id])
   @@unique([businessId, numberPrefix])
@@ -193,10 +197,72 @@ model Account {
   business       Business      @relation(fields: [businessId], references: [id], onDelete: Restrict)
   expenseCategory ExpenseCategory? @relation(fields: [businessId, expenseCategoryId], references: [businessId, id], onDelete: Restrict)
   journalLines   JournalLine[]
+  salePayments   SalePayment[]
 
   @@unique([businessId, id])
   @@unique([businessId, code])
   @@map("accounts")
+}
+
+model SaleDocument {
+  id                 String           @id @db.Uuid
+  businessId         String           @map("business_id") @db.Uuid
+  deviceEnrollmentId String           @map("device_enrollment_id") @db.Uuid
+  locationId         String           @map("location_id") @db.Uuid
+  partyId            String?          @map("party_id") @db.Uuid
+  commandId          String           @map("command_id") @db.Uuid
+  sourceEventId      String?          @map("source_event_id") @db.Uuid
+  number             String?          @db.VarChar(40)
+  status             String           @default("Draft") @db.VarChar(12)
+  version            Int              @default(1)
+  snapshot           Json
+  total              Decimal?         @db.Decimal(38, 2)
+  paid               Decimal?         @db.Decimal(38, 2)
+  due                Decimal?         @db.Decimal(38, 2)
+  businessDate       DateTime         @map("business_date") @db.Date
+  createdAt          DateTime         @default(now()) @map("created_at") @db.Timestamptz
+  postedAt           DateTime?        @map("posted_at") @db.Timestamptz
+  business           Business         @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  deviceEnrollment   DeviceEnrollment @relation(fields: [businessId, deviceEnrollmentId], references: [businessId, id], onDelete: Restrict)
+  location           Location         @relation(fields: [businessId, locationId], references: [businessId, id], onDelete: Restrict)
+  party              Party?           @relation(fields: [businessId, partyId], references: [businessId, id], onDelete: Restrict)
+  sourceEvent        SourceEvent?     @relation(fields: [businessId, sourceEventId], references: [businessId, id], onDelete: Restrict)
+  lines              SaleLine[]
+  payments           SalePayment[]
+
+  @@unique([businessId, id])
+  @@unique([businessId, commandId])
+  @@unique([businessId, number])
+  @@map("sale_documents")
+}
+
+model SaleLine {
+  id         String       @id @db.Uuid
+  businessId String       @map("business_id") @db.Uuid
+  saleId     String       @map("sale_id") @db.Uuid
+  itemId     String       @map("item_id") @db.Uuid
+  snapshot   Json
+  sale       SaleDocument @relation(fields: [businessId, saleId], references: [businessId, id], onDelete: Restrict)
+  item       Item         @relation(fields: [businessId, itemId], references: [businessId, id], onDelete: Restrict)
+
+  @@unique([businessId, id])
+  @@map("sale_lines")
+}
+
+model SalePayment {
+  id          String       @id @db.Uuid
+  businessId  String       @map("business_id") @db.Uuid
+  saleId      String       @map("sale_id") @db.Uuid
+  accountId   String       @map("account_id") @db.Uuid
+  kind        String       @db.VarChar(8)
+  applied     Decimal      @db.Decimal(38, 2)
+  tendered    Decimal?     @db.Decimal(38, 2)
+  reference   String?      @db.VarChar(120)
+  sale        SaleDocument @relation(fields: [businessId, saleId], references: [businessId, id], onDelete: Restrict)
+  account     Account      @relation(fields: [businessId, accountId], references: [businessId, id], onDelete: Restrict)
+
+  @@unique([businessId, id])
+  @@map("sale_payments")
 }
 
 model OpeningBatch {
@@ -286,6 +352,7 @@ model SourceEvent {
   provisionalDeficits ProvisionalDeficitCost[]
   changeBatches       ChangeBatch[]
   openingBatches      OpeningBatch[]
+  saleDocuments       SaleDocument[]
 
   @@unique([businessId, id])
   @@unique([businessId, commandId, effectKind])
@@ -450,6 +517,7 @@ model Item {
   taxProfile     TaxProfile?          @relation(fields: [businessId, taxProfileId], references: [businessId, id], onDelete: Restrict)
   conversions    ItemUnitConversion[]
   stockMovements StockMovement[]
+  saleLines      SaleLine[]
 
   @@unique([businessId, id])
   @@unique([businessId, sku])
@@ -488,6 +556,7 @@ model Party {
   updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   business   Business  @relation(fields: [businessId], references: [id], onDelete: Restrict)
   openingDocuments OpeningDocument[]
+  saleDocuments    SaleDocument[]
 
   @@unique([businessId, id])
   @@index([businessId, name, id], map: "parties_search")
