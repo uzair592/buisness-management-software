@@ -28,6 +28,12 @@ function stableId(seed: string): string {
   const hash = crypto.createHash("sha256").update(seed).digest("hex");
   return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-4${hash.slice(13, 16)}-a${hash.slice(17, 20)}-${hash.slice(20, 32)}`;
 }
+function stableJson(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  const row = value as Record<string, unknown>;
+  return `{${Object.keys(row).sort().map((key) => `${JSON.stringify(key)}:${stableJson(row[key])}`).join(",")}}`;
+}
 export async function createSaleDraft(db: PrismaClient, businessId: string, userId: string,
   membershipId: string, role: string, input: SaleInput) {
   if (!["Owner", "Accountant", "Cashier"].includes(role)) throw new SaleConflict("Trade permission required");
@@ -36,7 +42,7 @@ export async function createSaleDraft(db: PrismaClient, businessId: string, user
   }));
   if (existing) {
     const savedInput = existing.status === "Posted" ? (existing.snapshot as { input?: unknown }).input : existing.snapshot;
-    if (existing.id !== input.id || JSON.stringify(savedInput) !== JSON.stringify(input)) throw new SaleConflict("Draft identity already used with different content");
+    if (existing.id !== input.id || stableJson(savedInput) !== stableJson(input)) throw new SaleConflict("Draft identity already used with different content");
     return existing;
   }
   return withBusinessChange(db, businessId, userId, "sale.draft", async (tx) => {

@@ -71,6 +71,7 @@ test("M05 online sale persists number, exact split, stock, journal and replay on
   assert.equal(first.json().paid, "17");
   assert.equal(first.json().due, "10");
   assert.equal((await send(owner, "POST", "/v1/sales/drafts", draft)).statusCode, 201);
+  assert.equal((await send(owner, "POST", "/v1/sales/drafts", { ...draft, documentDiscount: "1" })).statusCode, 409);
   assert.equal((await send(other, "GET", `/v1/sales/documents/${draft.id}`)).statusCode, 404);
   const detail = await send(owner, "GET", `/v1/sales/documents/${draft.id}`);
   assert.equal(detail.statusCode, 200, detail.body);
@@ -89,4 +90,30 @@ test("M05 online sale persists number, exact split, stock, journal and replay on
   assert.equal(saved.movements[0].valueDelta.toString(), "-6");
   assert.equal(saved.receipts.length, 1);
   assert.equal(saved.sale.status, "Posted");
+
+  const walkIn = { ...draft, id: crypto.randomUUID(), commandId: crypto.randomUUID(), partyId: null,
+    lines: [{ ...draft.lines[1], id: crypto.randomUUID() }], payments: [
+      { id: crypto.randomUUID(), accountId: cash.json().id, kind: "Cash", applied: "5.00", tendered: "10.00", reference: null },
+    ] };
+  assert.equal((await send(owner, "POST", "/v1/sales/drafts", walkIn)).statusCode, 201);
+  const walkInPost = await send(owner, "POST", `/v1/sales/${walkIn.id}/post`, { commandId: walkIn.commandId });
+  assert.equal(walkInPost.statusCode, 200, walkInPost.body);
+  assert.match(walkInPost.json().number, /^D\d+-000002$/);
+  assert.equal(walkInPost.json().snapshot.payment.change, "5.00");
+  const noParty = { ...walkIn, id: crypto.randomUUID(), commandId: crypto.randomUUID(), payments: [] };
+  assert.equal((await send(owner, "POST", "/v1/sales/drafts", noParty)).statusCode, 201);
+  const blocked = await send(owner, "POST", `/v1/sales/${noParty.id}/post`, { commandId: noParty.commandId });
+  assert.equal(blocked.statusCode, 409, blocked.body);
+  assert.equal((await withTenantContext(db, { businessId: owner.id }, (tx) => tx.saleDocument.findUniqueOrThrow({ where: { id: noParty.id } })).then((row) => row.status)), "Draft");
+  const shortage = { ...draft, id: crypto.randomUUID(), commandId: crypto.randomUUID(), lines: [
+    { ...draft.lines[0], id: crypto.randomUUID(), quantity: "100" },
+  ], payments: [] };
+  assert.equal((await send(owner, "POST", "/v1/sales/drafts", shortage)).statusCode, 201);
+  assert.equal((await send(owner, "POST", `/v1/sales/${shortage.id}/post`, { commandId: shortage.commandId })).statusCode, 409);
+  const failure = await withTenantContext(db, { businessId: owner.id }, async (tx) => ({
+    receipt: await tx.commandReceipt.count({ where: { businessId: owner.id, commandId: shortage.commandId } }),
+    sale: await tx.saleDocument.findUniqueOrThrow({ where: { id: shortage.id } }),
+  }));
+  assert.equal(failure.receipt, 0);
+  assert.equal(failure.sale.number, null);
 });
