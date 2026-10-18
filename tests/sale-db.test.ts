@@ -90,6 +90,15 @@ test("M05 online sale persists number, exact split, stock, journal and replay on
   assert.equal(saved.movements[0].valueDelta.toString(), "-6");
   assert.equal(saved.receipts.length, 1);
   assert.equal(saved.sale.status, "Posted");
+  const pulled = await send(owner, "GET", `/v1/sync/pull?deviceEnrollmentId=${device.json().id}&afterCursor=0&limit=100`);
+  assert.equal(pulled.statusCode, 200, pulled.body);
+  const postedChange = (pulled.json().changes as Array<{ action: string; row: Record<string, unknown> }>).find((row) =>
+    row.action === "sale.post" && row.row.id === draft.id);
+  assert.ok(postedChange, "posted sale appears in the change feed");
+  assert.equal(postedChange.row.number, first.json().number);
+  assert.equal(postedChange.row.total, first.json().total);
+  assert.equal("snapshot" in postedChange.row, false, "cost-bearing receipt snapshot is excluded");
+  assert.equal((await send(other, "GET", `/v1/sync/pull?deviceEnrollmentId=${device.json().id}&afterCursor=0`)).statusCode, 403);
 
   const walkIn = { ...draft, id: crypto.randomUUID(), commandId: crypto.randomUUID(), partyId: null,
     lines: [{ ...draft.lines[1], id: crypto.randomUUID() }], payments: [

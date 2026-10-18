@@ -30,7 +30,7 @@ function identity(role: "Owner" | "Cashier" = "Cashier"): IdentityBootstrap {
 function snapshot(business: IdentityBootstrap["business"], cursor = "4") {
   return { business, syncCursor: cursor, catalogue: {
     items: [{ id: itemId, name: "A", salePrice: "10.00" }], parties: [], categories: [],
-    units: [], taxProfiles: [], conversions: [], accountSetup: null,
+    units: [], taxProfiles: [], conversions: [], sales: [], accountSetup: null,
   } };
 }
 
@@ -54,6 +54,9 @@ test("catalogue pull resumes after interruption, preserves pending work on resna
       changes: [{ cursor: "5", action: "item.edit", row: { id: itemId, name: "B" } }] }, false);
     assert.equal((await db.catalogue.get(`item:${itemId}`))?.row.name, "B");
     assert.equal((await db.syncState.get("catalogueCursor"))?.value, "6");
+    await applyCataloguePull(db, { datasetEpoch: 1, fromCursor: "6", nextCursor: "7",
+      changes: [{ cursor: "7", action: "sale.post", row: { id: itemId, number: "D01-000001", total: "10.00" } }] }, false);
+    assert.equal((await db.catalogue.get(`sale:${itemId}`))?.row.number, "D01-000001");
     await assert.rejects(applyCataloguePull(db, { datasetEpoch: 1, fromCursor: "4", nextCursor: "6", changes: [] }, false));
     await assert.rejects(installCatalogueSnapshot(db, snapshot({ ...bootstrap.business, datasetEpoch: 2 }), false));
     await installCatalogueSnapshot(db, snapshot(bootstrap.business, "8"), false);

@@ -67,11 +67,11 @@ export interface CataloguePull {
   changes: Array<{ cursor: string; action: string; row: Record<string, unknown> }>;
 }
 
-const catalogueGroups = ["item", "party", "category", "unit", "tax_profile", "conversion", "account", "expense_category"] as const;
+const catalogueGroups = ["item", "party", "category", "unit", "tax_profile", "conversion", "account", "expense_category", "sale"] as const;
 const snapshotGroups: Record<string, string> = {
   items: "item", parties: "party", categories: "category", units: "unit",
   taxProfiles: "tax_profile", conversions: "conversion", accounts: "account",
-  expenseCategories: "expense_category",
+  expenseCategories: "expense_category", sales: "sale",
 };
 const cursorValue = (value: string): bigint => {
   if (!/^\d{1,19}$/.test(value)) throw new Error("Invalid sync cursor");

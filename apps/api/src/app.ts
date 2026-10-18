@@ -867,7 +867,7 @@ export function createApp(
         // Capture the floor before reading models: concurrent later changes can be replayed by pull.
         const syncHead = await tx.syncHead.findUnique({ where: { businessId: tenant.businessId } });
 
-        const [items, parties, categories, units, taxProfiles, conversions] = await Promise.all([
+        const [items, parties, categories, units, taxProfiles, conversions, sales] = await Promise.all([
           tx.item.findMany({ where: { businessId: tenant.businessId, archivedAt: null },
             select: { id: true, kind: true, name: true, sku: true, barcode: true, salePrice: true,
               categoryId: true, baseUnitId: true, taxProfileId: true, version: true } }),
@@ -881,6 +881,11 @@ export function createApp(
             select: { id: true, name: true, rate: true, mode: true, version: true } }),
           tx.itemUnitConversion.findMany({ where: { businessId: tenant.businessId, archivedAt: null },
             select: { id: true, itemId: true, unitId: true, factor: true, version: true } }),
+          tx.saleDocument.findMany({ where: { businessId: tenant.businessId, status: "Posted",
+            ...(tenant.membership.locationId && tenant.membership.role !== "Owner"
+              ? { locationId: tenant.membership.locationId } : {}) },
+            select: { id: true, number: true, locationId: true, partyId: true, businessDate: true,
+              total: true, paid: true, due: true, postedAt: true, status: true } }),
         ]);
         const accountSetup = ["Owner", "Accountant"].includes(tenant.membership.role) ? {
           accounts: await tx.account.findMany({ where: { businessId: tenant.businessId, archivedAt: null },
@@ -891,7 +896,7 @@ export function createApp(
         } : null;
         return { device: d, business: b, locations: locs, existingLease: l,
           syncCursor: (syncHead?.committedCursor ?? 0n).toString(),
-          catalogue: { items, parties, categories, units, taxProfiles, conversions, accountSetup } };
+          catalogue: { items, parties, categories, units, taxProfiles, conversions, sales, accountSetup } };
       },
     );
 
@@ -1013,6 +1018,20 @@ export function createApp(
             select: { id: true, code: true, name: true, kind: true, classification: true,
               expenseCategoryId: true, version: true, archivedAt: true } });
           changes.push({ cursor: batch.cursor.toString(), action, row: { accounts: rows } });
+          continue;
+        }
+        // Financial change batches carry source identity rather than the draft
+        // action. Expose only a location-scoped receipt summary here: the saved
+        // snapshot includes private cost and must not enter a cashier cache.
+        const sourceEventId = typeof payload.sourceEventId === "string" ? payload.sourceEventId : null;
+        if (sourceEventId) {
+          const sale = await tx.saleDocument.findFirst({ where: { businessId: tenant.businessId,
+            sourceEventId, status: "Posted",
+            ...(tenant.membership.locationId && tenant.membership.role !== "Owner"
+              ? { locationId: tenant.membership.locationId } : {}) },
+            select: { id: true, number: true, locationId: true, partyId: true, businessDate: true,
+              total: true, paid: true, due: true, postedAt: true, status: true } });
+          if (sale) changes.push({ cursor: batch.cursor.toString(), action: "sale.post", row: sale });
           continue;
         }
         if (!id) continue;
