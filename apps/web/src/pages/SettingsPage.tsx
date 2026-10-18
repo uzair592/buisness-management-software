@@ -11,6 +11,9 @@ import {
   readCachedIdentity,
   isOfflineLeaseValid,
   closeActiveLocalDb,
+  installCatalogueSnapshot,
+  applyCataloguePull,
+  type CataloguePull,
 } from "../db/index";
 
 export function SettingsPage() {
@@ -68,6 +71,7 @@ export function SettingsPage() {
     ReturnType<typeof readCachedIdentity>
   > | null>(null);
   const [bootstrapStatus, setBootstrapStatus] = useState<string | null>(null);
+  const [syncBusy, setSyncBusy] = useState(false);
 
   // Finding 4: Deliberately bind browser to a device instead of blindly picking the first enrolled device
   const [boundDeviceId, setBoundDeviceId] = useState<string | null>(() => {
@@ -351,7 +355,10 @@ export function SettingsPage() {
         datasetEpoch: bootstrapData.business.datasetEpoch,
       });
 
+      if (bootstrapData.business.id !== auth.selectedBusinessId || bootstrapData.device.id !== device.id ||
+        bootstrapData.membership.id !== device.membershipId) throw new Error("Bootstrap identity scope changed");
       await bootstrapLocalIdentity(db, bootstrapData);
+      await installCatalogueSnapshot(db, bootstrapData, ["Owner", "Accountant"].includes(bootstrapData.membership.role));
       const cached = await readCachedIdentity(db);
       setLocalCache(cached);
 
@@ -366,10 +373,35 @@ export function SettingsPage() {
         }),
       );
 
-      setBootstrapStatus("Bootstrap successful! Permitted data cached in partitioned IndexedDB.");
+      setBootstrapStatus("Permitted catalogue cached. Online billing remains required while offline issue is under development.");
     } catch (err: unknown) {
       setBootstrapStatus(`Bootstrap error: ${err instanceof Error ? err.message : "Unknown error"}`);
     }
+  }
+
+  async function handlePullCatalogue() {
+    if (!auth.user || !auth.selectedBusinessId || !boundDeviceId || !localCache?.business) return;
+    setSyncBusy(true);
+    try {
+      const db = getLocalDatabase({ userId: auth.user.id, businessId: auth.selectedBusinessId,
+        enrollmentId: boundDeviceId, datasetEpoch: localCache.business.datasetEpoch });
+      for (let page = 0; page < 100; page++) {
+        const saved = await db.syncState.get("catalogueCursor");
+        if (typeof saved?.value !== "string") throw new Error("Catalogue needs a fresh bootstrap");
+        const query = new URLSearchParams({ deviceEnrollmentId: boundDeviceId, afterCursor: saved.value });
+        const response = await fetch(`/v1/sync/pull?${query}`, { credentials: "include" });
+        if (!response.ok) throw new Error(`Pull stopped (${response.status}); local cursor and data were kept`);
+        const pull = await response.json() as CataloguePull & { hasMore: boolean };
+        await applyCataloguePull(db, pull, ["Owner", "Accountant"].includes(localCache.membership?.role ?? ""));
+        if (!pull.hasMore) {
+          setBootstrapStatus(`Catalogue updated through cursor ${pull.nextCursor}. Online billing remains required.`);
+          return;
+        }
+      }
+      setBootstrapStatus("More catalogue changes remain. Pull again to continue.");
+    } catch (error) {
+      setBootstrapStatus(error instanceof Error ? error.message : "Could not update catalogue");
+    } finally { setSyncBusy(false); }
   }
 
   async function handleRevokeSession(sessionId: string) {
@@ -851,6 +883,10 @@ export function SettingsPage() {
         {/* Cached Partition Overview */}
         {localCache && (
           <div className="p-3 bg-gray-50 border rounded text-xs space-y-1">
+            <Button onClick={() => void handlePullCatalogue()} disabled={syncBusy || !boundDeviceId}
+              className="btn-secondary text-xs py-1 px-2">
+              {syncBusy ? "Updating catalogue…" : "Update catalogue"}
+            </Button>
             <p className="font-semibold text-gray-700">IndexedDB Partition Verified:</p>
             <p>
               <b>Business:</b> {localCache.business?.name} (Epoch {localCache.business?.datasetEpoch})

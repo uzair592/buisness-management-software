@@ -10,8 +10,8 @@ Last planning update: 2026-10-18.
 | M02 Identity and devices | Core complete; PR #3, #4 and #5 merged | [M02 evidence](docs/evidence/m02/README.md); Prisma 7 prerequisite, global username auth, PostgreSQL RLS under restricted `bms_runtime`, composite FKs, device enrolment/signed leases, partitioned IndexedDB bootstrap, verified upgrade and fresh installation paths; historical checksum mismatch remains for upgraded PR #3 databases |
 | M03 Domain and journal | Foundation on main; remaining acceptance open | PR #7 restored the posting foundation and PR #8 serialized device configuration writes with posting cursors; full domain acceptance remains open. |
 | M04 Catalogue and opening balances | In progress | PR #9 and #10 merged. PR #10 added account setup, role-filtered catalogue bootstrap/pull, previewed one-time opening and a provisional-party ordering contract. The current M04 follow-up adds paged opening choices and category/tax/conversion setup UI; provisional-party server acceptance and full M04 gate remain open. |
-| M05 First sale | In review, PR #12 | Draft/posted sale schema, online billing UI and atomic journal/stock/payment path; [CI on implementation head `2e659c5`](https://github.com/uzair592/buisness-management-software/actions/runs/39121829826) passed. |
-| M06 Offline and two-device sync | Not started | — |
+| M05 First sale | In review, PR #12; final-head gate failed | Online billing and atomic journal/stock/payment path passed the implementation-head CI. Final documentation-only head `6665191` failed one M04 opening-preview browser journey (15/16 passed); exact-head review remains open. |
+| M06 Offline and two-device sync | Initial local catalogue increment in review branch | Public app-shell caching, catalogue snapshot and atomic pull cursor with pending-store preservation; no offline invoice issue or convergence claim. |
 | M07 Purchases and money | Not started | — |
 | M08 Returns and inventory lifecycle | Not started | — |
 | M09 Reports and reconciliation | Not started | — |
@@ -23,7 +23,15 @@ Last planning update: 2026-10-18.
 
 ## Next action
 
-PR #11 merged at `bb5f96506acafcf02981adb6a73dc233d856ca62`. Review M05 [PR #12](https://github.com/uzair592/buisness-management-software/pull/12), including real database and browser evidence, before merging. M04 large setup choices and M03 valuation fixtures remain tracked; M05 rejects unvalued/insufficient stock instead of posting a provisional margin.
+PR #11 merged at `bb5f96506acafcf02981adb6a73dc233d856ca62`. Investigate the [PR #12 final-head CI failure](https://github.com/uzair592/buisness-management-software/actions/runs/39122087273) and review M05 accounting before merging. Complete M06 offline issue, server intake and T05–T12 two-device proof before M07 or M08. M04 large setup choices and M03 valuation fixtures remain tracked.
+
+## M06 initial local sync increment (branch `milestone-06-offline-sync`)
+
+- Based on the unmerged M05 draft head `6665191215247e2b32e8719dde4e9a4a355bed4d`; this is a dependent review branch, not a merge or deployment.
+- Adds version 2 Dexie catalogue and reserved pending stores. Full permitted catalogue replacement commits with its cursor in one transaction. Pull validates epoch, cursor range and data scope, and applies changes with cursor advancement atomically. A resnapshot keeps pending records. Settings can manually update the catalogue; cashier accounts stay out of the local store.
+- Production-only service worker caches public application assets and an install manifest; it never caches authenticated `/v1/` responses. Offline billing remains disabled.
+- Local `corepack pnpm db:generate` passed. Lint, all typechecks and both builds passed. `corepack pnpm check` reached tests but its `tsx` CLI IPC socket could not bind (`EPERM` here). Equivalent `node --import tsx --test` passed 16 unit tests including interrupted pull and pending preservation. PostgreSQL and browser gates remain unrun for this branch.
+- No PostgreSQL migration. The additive IndexedDB v2 migration retains version 1 records. No issued invoice or outbox upload is created by this increment; M06 gate remains open.
 
 ## M05 online sale work in progress
 
