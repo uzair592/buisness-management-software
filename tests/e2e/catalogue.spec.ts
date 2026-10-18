@@ -54,3 +54,47 @@ test("M04 owner can create and reload parties, services and opening at desktop a
   expect(accountWidth.scroll).toBeLessThanOrEqual(accountWidth.viewport + 1);
   await page.screenshot({ path: testInfo.outputPath("account-setup-mobile.png"), fullPage: true });
 });
+
+test("M04 setup and opening search reach goods beyond the first page", async ({ page }, testInfo) => {
+  const unique = crypto.randomUUID().slice(0, 8);
+  const registration = await page.request.post("/v1/auth/register", { data: {
+    username: `setup_${unique}`, password: "SafePassword123!", fullName: "Setup Owner", businessName: `Setup ${unique}`,
+  } });
+  expect(registration.status()).toBe(201);
+  const csrf = (await registration.json()).csrfToken as string;
+  const post = (path: string, data: object) => page.request.post(path, { data, headers: { "x-csrf-token": csrf } });
+  const each = await post("/v1/catalogue/units", { code: "EA", name: "Each" });
+  expect(each.status()).toBe(201);
+  const box = await post("/v1/catalogue/units", { code: "BOX", name: "Box" });
+  expect(box.status()).toBe(201);
+  let lastId = "";
+  for (let index = 0; index < 27; index++) {
+    const item = await post("/v1/catalogue/items", { name: `Opening good ${String(index).padStart(2, "0")}`,
+      kind: "Goods", baseUnitId: (await each.json()).id, sku: `GOOD-${index}`, salePrice: "12.00" });
+    expect(item.status()).toBe(201);
+    lastId = (await item.json()).id;
+  }
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await page.goto("/items");
+  await page.getByLabel("New category").fill("Retail");
+  await page.getByRole("button", { name: "Add category" }).click();
+  await page.getByLabel("Tax profile").fill("General 5");
+  await page.getByLabel("Rate (%)").fill("5.0000");
+  await page.getByRole("button", { name: "Add tax profile" }).click();
+  await page.reload();
+  await page.getByRole("button", { name: "Next" }).click();
+  await expect(page.getByText("Opening good 26")).toBeVisible();
+  await page.getByRole("button", { name: "Edit" }).nth(1).click();
+  const dialog = page.getByRole("dialog", { name: "Edit item" });
+  await dialog.getByLabel("Alternate unit").selectOption((await box.json()).id);
+  await dialog.getByLabel("Units per base").fill("12");
+  await dialog.getByRole("button", { name: "Add conversion" }).click();
+  await expect(dialog.getByText("Box: 1 = 12 base units")).toBeVisible();
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await page.goto("/cash-bank");
+  await page.locator(".account-opening-row select").first().selectOption("Stock");
+  await page.getByRole("searchbox", { name: "Search items" }).fill("Opening good 26");
+  await page.locator(".account-opening-row select").nth(1).selectOption(lastId);
+  await expect(page.locator(".account-opening-row select").nth(1)).toHaveValue(lastId);
+  await page.screenshot({ path: testInfo.outputPath("opening-search-desktop.png"), fullPage: true });
+});
