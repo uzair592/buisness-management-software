@@ -1,6 +1,6 @@
 # Project status
 
-Last planning update: 2026-10-15.
+Last planning update: 2026-10-18.
 
 | Milestone | Status | Evidence |
 | --- | --- | --- |
@@ -9,7 +9,7 @@ Last planning update: 2026-10-15.
 | M01 UI refinement | Complete; PR #2 merged | [Screenshots and original checks](docs/evidence/m01-ui-refinement/README.md); [filter-race repair and passing CI](docs/evidence/m01-ui-refinement/ci-filter-fix.md); isolated sample interactions only |
 | M02 Identity and devices | Core complete; PR #3, #4 and #5 merged | [M02 evidence](docs/evidence/m02/README.md); Prisma 7 prerequisite, global username auth, PostgreSQL RLS under restricted `bms_runtime`, composite FKs, device enrolment/signed leases, partitioned IndexedDB bootstrap, verified upgrade and fresh installation paths; historical checksum mismatch remains for upgraded PR #3 databases |
 | M03 Domain and journal | Foundation on main; remaining acceptance open | PR #7 restored the posting foundation and PR #8 serialized device configuration writes with posting cursors; full domain acceptance remains open. |
-| M04 Catalogue and opening balances | In progress | PR #9 merged tenant-scoped catalogue/party API and UI. Draft PR #10 adds account setup, role-filtered catalogue bootstrap/pull, one-time previewed opening journal with item-linked stock/party due documents, an account/opening screen, and a provisional-party dependency contract. Full offline acceptance and large-catalogue setup UX remain pending. |
+| M04 Catalogue and opening balances | In progress | PR #9 and #10 merged. PR #10 added account setup, role-filtered catalogue bootstrap/pull, previewed one-time opening and a provisional-party ordering contract. The current M04 follow-up adds paged opening choices and category/tax/conversion setup UI; provisional-party server acceptance and full M04 gate remain open. |
 | M05 First sale | Not started | — |
 | M06 Offline and two-device sync | Not started | — |
 | M07 Purchases and money | Not started | — |
@@ -23,7 +23,16 @@ Last planning update: 2026-10-15.
 
 ## Next action
 
-Review draft PR #10's opening accounting, tenant integration, browser and role-filtered pull evidence. Complete large-catalogue setup UX and server-side provisional-party acceptance with device binding before claiming offline sales. M05 first sale remains blocked until the M04 acceptance gate passes.
+Review the M04 catalogue follow-up's database/browser evidence, complete versioned category/tax/conversion editing and device-bound provisional-party server acceptance before claiming the M04 gate. M05 first sale remains blocked until the prerequisite gate passes.
+
+## M04 catalogue follow-up (in review)
+
+- Based on merged `main` at `304dc3c19b793977376c7823a3769df37f73bdc4` (PR #10 merged). No schema migration.
+- Opening item and party selection uses tenant-scoped, role-filtered 25-row search pages instead of silently limiting opening to the first 25 records. Directory pagination now uses a server `hasMore` flag. The item screen creates categories and generic tax profiles and can add alternate-unit conversions to an existing goods item, with the saved conversions displayed when editing.
+- Local checks: direct TypeScript check, ESLint, API and web builds, and 14 unit tests passed. A real PostgreSQL regression for a 27-item catalogue was added but has not run locally (PostgreSQL tools/server are unavailable in this workspace). Browser evidence and exact-head CI are pending.
+- Follow-up on PR #11: versioned edit/archive paths for category, unit name, tax profile and conversion factor, with tenant-scoped change batches and inline setup controls. New DB and browser checks cover stale versions, cross-business ownership, sync pull and visible conversion/tax edits. Await exact-head CI for this follow-up.
+- Follow-up: device-bound provisional-party acceptance uses the supplied command/party IDs, serialized business cursor, immutable payload hash and canonical receipt. Concurrent repeats return one party and one change; changed retries and cross-business/device submissions are rejected. This is an online acceptance endpoint for future outbox replay, not an offline UI or sale. Await exact-head CI for its real PostgreSQL regression.
+- Remaining: full large-catalogue usability for category/tax selectors and opening account choices; M03 valuation/accounting fixtures and complete M04 gate review. No offline sale or operational billing is claimed. The M05 billing workspace should use a compact, clear Vyapar-inspired flow without copying its assets.
 
 Continue [Milestone 04: Catalogue and opening balances](prompts/04-catalogue-and-opening.md), while tracking remaining M03 valuation and accounting fixtures. M02 establishes username authentication, database/API tenant isolation under a restricted role, device enrolment, signed leases, and local IndexedDB partitioning; it does not claim offline billing or sync replication (scheduled for later milestones).
 

@@ -8,7 +8,7 @@ type Item = { id: string; name: string; kind: "Goods" | "Service"; sku: string |
   baseUnitId: string | null; taxProfileId: string | null; version: number };
 type Party = { id: string; name: string; isCustomer: boolean; isSupplier: boolean;
   phone: string | null; email: string | null; version: number };
-type Choice = { id: string; name: string; code?: string };
+type Choice = { id: string; name: string; code?: string; rate?: string; mode?: string; version: number };
 type Setup = { categories: Choice[]; units: Choice[]; taxProfiles: Choice[] };
 type Form = { name: string; kind: "Goods" | "Service"; sku: string; barcode: string;
   salePrice: string; categoryId: string; baseUnitId: string; taxProfileId: string;
@@ -24,6 +24,7 @@ export function LiveDirectoryPage({ type }: { type: Kind }) {
   const [setup, setSetup] = useState<Setup>({ categories: [], units: [], taxProfiles: [] });
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [form, setForm] = useState<Form>(blank);
@@ -33,6 +34,13 @@ export function LiveDirectoryPage({ type }: { type: Kind }) {
   const [formError, setFormError] = useState("");
   const [unitDraft, setUnitDraft] = useState({ code: "", name: "" });
   const [addingUnit, setAddingUnit] = useState(false);
+  const [categoryName, setCategoryName] = useState("");
+  const [taxDraft, setTaxDraft] = useState({ name: "", rate: "", mode: "Exclusive" });
+  const [conversionDraft, setConversionDraft] = useState({ unitId: "", factor: "" });
+  const [conversions, setConversions] = useState<Array<{ id: string; unitId: string; factor: string; version: number }>>([]);
+  const [setupBusy, setSetupBusy] = useState(false);
+  const [setupEdit, setSetupEdit] = useState<{ path: "categories" | "units" | "tax-profiles" | "conversions";
+    id: string; version: number; name: string; rate: string; mode: string; factor: string } | null>(null);
 
   const load = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
@@ -40,8 +48,9 @@ export function LiveDirectoryPage({ type }: { type: Kind }) {
     try {
       const response = await fetch(`/v1/catalogue/${type}?q=${encodeURIComponent(query)}&page=${page}`, { signal });
       if (!response.ok) throw new Error(response.status === 403 ? "You do not have access to this directory." : "Could not load this directory.");
-      const data = await response.json() as { rows: Array<Item | Party> };
+      const data = await response.json() as { rows: Array<Item | Party>; hasMore: boolean };
       setRows(data.rows);
+      setHasMore(data.hasMore);
       if (type === "items") {
         const setupResponse = await fetch("/v1/catalogue/setup", { signal });
         if (!setupResponse.ok) throw new Error("Could not load catalogue choices.");
@@ -69,6 +78,12 @@ export function LiveDirectoryPage({ type }: { type: Kind }) {
       { ...blank, name: row.name, isCustomer: row.isCustomer, isSupplier: row.isSupplier,
         phone: row.phone ?? "", email: row.email ?? "" });
     setFormError(""); setFormOpen(true);
+    if ("kind" in row && row.kind === "Goods") {
+      void fetch(`/v1/catalogue/conversions?itemId=${row.id}`).then((response) => {
+        if (!response.ok) throw new Error("Could not load conversions.");
+        return response.json() as Promise<{ rows: typeof conversions }>;
+      }).then((data) => setConversions(data.rows)).catch((cause) => setFormError(cause instanceof Error ? cause.message : "Could not load conversions."));
+    } else setConversions([]);
   };
   const payload = () => type === "items" ? {
     name: form.name.trim(), kind: form.kind, sku: form.sku.trim() || null,
@@ -116,6 +131,46 @@ export function LiveDirectoryPage({ type }: { type: Kind }) {
       setUnitDraft({ code: "", name: "" });
     } catch (cause) { setFormError(cause instanceof Error ? cause.message : "Could not create unit."); }
     finally { setAddingUnit(false); }
+  }
+
+  async function createSetup(path: string, payload: object, done: () => void) {
+    setSetupBusy(true); setError(""); setFormError("");
+    try {
+      const response = await fetch(`/v1/catalogue/${path}`, { method: "POST",
+        headers: { "Content-Type": "application/json", "x-csrf-token": csrfToken ?? "" }, body: JSON.stringify(payload) });
+      const data = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(data.error ?? "Could not save setup.");
+      done(); await load();
+      if (path === "conversions" && editing) {
+        const conversionResponse = await fetch(`/v1/catalogue/conversions?itemId=${editing.id}`);
+        if (conversionResponse.ok) setConversions((await conversionResponse.json() as { rows: typeof conversions }).rows);
+      }
+    } catch (cause) { const message = cause instanceof Error ? cause.message : "Could not save setup.";
+      if (path === "conversions") setFormError(message); else setError(message);
+    } finally { setSetupBusy(false); }
+  }
+
+  async function changeSetup(archive: boolean) {
+    if (!setupEdit) return;
+    if (archive && !window.confirm(`Archive ${setupEdit.name}? Existing references stay in history.`)) return;
+    setSetupBusy(true); setError(""); setFormError("");
+    try {
+      const payload = setupEdit.path === "tax-profiles" ? { name: setupEdit.name.trim(), rate: setupEdit.rate, mode: setupEdit.mode } :
+        setupEdit.path === "conversions" ? { factor: setupEdit.factor } : { name: setupEdit.name.trim() };
+      const response = await fetch(`/v1/catalogue/${setupEdit.path}/${setupEdit.id}`, { method: "PATCH",
+        headers: { "Content-Type": "application/json", "x-csrf-token": csrfToken ?? "" },
+        body: JSON.stringify({ ...payload, expectedVersion: setupEdit.version, archive }) });
+      const data = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(data.error ?? "Could not update setup.");
+      if (setupEdit.path === "conversions" && editing) {
+        const next = await fetch(`/v1/catalogue/conversions?itemId=${editing.id}`);
+        if (!next.ok) throw new Error("Saved, but could not refresh conversions.");
+        setConversions((await next.json() as { rows: typeof conversions }).rows);
+      } else await load();
+      setSetupEdit(null);
+    } catch (cause) { const message = cause instanceof Error ? cause.message : "Could not update setup.";
+      if (setupEdit.path === "conversions") setFormError(message); else setError(message);
+    } finally { setSetupBusy(false); }
   }
 
   async function archive(row: Item | Party) {
@@ -166,8 +221,46 @@ export function LiveDirectoryPage({ type }: { type: Kind }) {
           </tr>)}
         </Table>}
       <div className="live-pagination"><button className="btn-secondary" disabled={page === 1 || loading} onClick={() => setPage(page - 1)}>Previous</button>
-        <span>Page {page}</span><button className="btn-secondary" disabled={rows.length < 25 || loading} onClick={() => setPage(page + 1)}>Next</button></div>
+        <span>Page {page}</span><button className="btn-secondary" disabled={!hasMore || loading} onClick={() => setPage(page + 1)}>Next</button></div>
     </Panel>
+    {type === "items" && editable && <Panel>
+      <h2>Catalogue setup</h2><p className="muted">Create categories and generic tax profiles before assigning them to items.</p>
+      <form className="account-inline-form" onSubmit={(event) => { event.preventDefault(); void createSetup("categories", { name: categoryName.trim() }, () => setCategoryName("")); }}>
+        <label>New category<input className="input" required maxLength={120} value={categoryName} onChange={(event) => setCategoryName(event.target.value)} placeholder="Beverages" /></label>
+        <button className="btn-secondary" disabled={setupBusy}>Add category</button>
+      </form>
+      <form className="account-inline-form" onSubmit={(event) => { event.preventDefault(); void createSetup("tax-profiles", taxDraft, () => setTaxDraft({ name: "", rate: "", mode: "Exclusive" })); }}>
+        <label>Tax profile<input className="input" required maxLength={100} value={taxDraft.name} onChange={(event) => setTaxDraft({ ...taxDraft, name: event.target.value })} placeholder="Standard tax" /></label>
+        <label>Rate (%)<input className="input" required inputMode="decimal" pattern="[0-9]+([.][0-9]{1,4})?" value={taxDraft.rate} onChange={(event) => setTaxDraft({ ...taxDraft, rate: event.target.value })} placeholder="10.0000" /></label>
+        <label>Mode<select className="input" value={taxDraft.mode} onChange={(event) => setTaxDraft({ ...taxDraft, mode: event.target.value })}><option>Exclusive</option><option>Inclusive</option></select></label>
+        <button className="btn-secondary" disabled={setupBusy}>Add tax profile</button>
+      </form>
+      {(["categories", "units", "taxProfiles"] as const).map((group) => <div key={group} className="catalogue-setup-group">
+        <h3>{group === "taxProfiles" ? "Tax profiles" : group === "units" ? "Units" : "Categories"}</h3>
+        {setup[group].length === 0 ? <p className="muted">None created yet.</p> :
+          <div className="catalogue-setup-list">{setup[group].map((choice) => {
+            const path = group === "taxProfiles" ? "tax-profiles" : group;
+            return <div className="catalogue-setup-row" key={choice.id}>
+              <span>{choice.code ? `${choice.code} · ` : ""}{choice.name}{choice.rate ? ` · ${choice.rate}% ${choice.mode}` : ""}</span>
+              <button className="btn-ghost" disabled={setupBusy} onClick={() => setSetupEdit({ path, id: choice.id,
+                version: choice.version, name: choice.name, rate: choice.rate ?? "0", mode: choice.mode ?? "Exclusive", factor: "" })}>Edit</button>
+            </div>;
+          })}</div>}
+      </div>)}
+    </Panel>}
+    {setupEdit && setupEdit.path !== "conversions" && <Dialog title={`Edit ${setupEdit.path}`} onClose={() => setSetupEdit(null)}>
+      <form className="live-form" onSubmit={(event) => { event.preventDefault(); void changeSetup(false); }}>
+        <label>Name<input className="input" data-dialog-autofocus required maxLength={120} value={setupEdit.name}
+          onChange={(event) => setSetupEdit({ ...setupEdit, name: event.target.value })} /></label>
+        {setupEdit.path === "tax-profiles" && <><label>Rate (%)<input className="input" required inputMode="decimal" pattern="[0-9]+([.][0-9]{1,4})?"
+          value={setupEdit.rate} onChange={(event) => setSetupEdit({ ...setupEdit, rate: event.target.value })} /></label>
+          <label>Mode<select className="input" value={setupEdit.mode} onChange={(event) => setSetupEdit({ ...setupEdit, mode: event.target.value })}><option>Exclusive</option><option>Inclusive</option></select></label></>}
+        {error && <p role="alert" className="live-error">{error}</p>}
+        <div className="live-form-actions"><button type="button" className="btn-ghost" disabled={setupBusy} onClick={() => void changeSetup(true)}>Archive</button>
+          <button type="button" className="btn-secondary" onClick={() => setSetupEdit(null)}>Cancel</button>
+          <button className="btn-primary" disabled={setupBusy}>{setupBusy ? "Saving…" : "Save changes"}</button></div>
+      </form>
+    </Dialog>}
     {formOpen && <Dialog className="live-dialog" title={`${editing ? "Edit" : "Add"} ${type === "items" ? "item" : "party"}`} onClose={() => { if (!saving) setFormOpen(false); }}>
         <form onSubmit={(event) => void save(event)} className="live-form">
           <label>Name<input className="input" data-dialog-autofocus required maxLength={160} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label>
@@ -183,6 +276,24 @@ export function LiveDirectoryPage({ type }: { type: Kind }) {
               <span>New unit</span><input className="input" aria-label="New unit code" placeholder="Code, e.g. EA" maxLength={20} value={unitDraft.code} onChange={(event) => setUnitDraft({ ...unitDraft, code: event.target.value })} />
               <input className="input" aria-label="New unit name" placeholder="Name, e.g. Each" maxLength={80} value={unitDraft.name} onChange={(event) => setUnitDraft({ ...unitDraft, name: event.target.value })} />
               <button type="button" className="btn-secondary" disabled={addingUnit || !unitDraft.code.trim() || !unitDraft.name.trim()} onClick={() => void addUnit()}>Add unit</button>
+            </div>}
+            {editing && form.kind === "Goods" && <div className="live-unit-add">
+              <span>Alternate units</span>
+              {conversions.map((conversion) => <div className="catalogue-setup-row" key={conversion.id}>
+                <span>{setup.units.find((unit) => unit.id === conversion.unitId)?.name ?? "Unit"}: 1 = {conversion.factor} base units</span>
+                <button type="button" className="btn-ghost" onClick={() => setSetupEdit({ path: "conversions", id: conversion.id,
+                  version: conversion.version, name: "conversion", rate: "", mode: "", factor: conversion.factor })}>Edit</button>
+              </div>)}
+              {setupEdit?.path === "conversions" && <div className="live-unit-add">
+                <label>Base units per alternate<input className="input" inputMode="decimal" pattern="[0-9]+([.][0-9]{1,6})?" value={setupEdit.factor}
+                  onChange={(event) => setSetupEdit({ ...setupEdit, factor: event.target.value })} /></label>
+                <button type="button" className="btn-secondary" disabled={setupBusy} onClick={() => void changeSetup(false)}>Save conversion</button>
+                <button type="button" className="btn-ghost" disabled={setupBusy} onClick={() => void changeSetup(true)}>Archive conversion</button>
+                <button type="button" className="btn-ghost" onClick={() => setSetupEdit(null)}>Cancel</button>
+              </div>}
+              <select className="input" aria-label="Alternate unit" value={conversionDraft.unitId} onChange={(event) => setConversionDraft({ ...conversionDraft, unitId: event.target.value })}><option value="">Choose alternate unit</option>{setup.units.filter((unit) => unit.id !== form.baseUnitId).map((unit) => <option key={unit.id} value={unit.id}>{unit.name}</option>)}</select>
+              <input className="input" aria-label="Units per base" inputMode="decimal" pattern="[0-9]+([.][0-9]{1,6})?" placeholder="Base units per alternate" value={conversionDraft.factor} onChange={(event) => setConversionDraft({ ...conversionDraft, factor: event.target.value })} />
+              <button type="button" className="btn-secondary" disabled={setupBusy || !conversionDraft.unitId || !conversionDraft.factor} onClick={() => void createSetup("conversions", { itemId: editing.id, ...conversionDraft }, () => setConversionDraft({ unitId: "", factor: "" }))}>Add conversion</button>
             </div>}
           </> : <>
             <div className="live-checks"><label><input type="checkbox" checked={form.isCustomer} onChange={(event) => setForm({ ...form, isCustomer: event.target.checked })} /> Customer</label>

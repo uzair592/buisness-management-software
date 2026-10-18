@@ -19,6 +19,7 @@ import {
 } from "@business/contracts";
 import { type Prisma, type PrismaClient, ChangedCommandError, withBusinessChange, withTenantContext } from "@business/db";
 import { openingInput, prepareOpening, commitOpening, systemAccounts, OpeningConflict } from "./opening.js";
+import { provisionalPartyInput, acceptProvisionalParty, ProvisionalPartyConflict } from "./provisional-party.js";
 import { hashPassword, verifyPassword } from "./auth/password.js";
 import {
   createSession,
@@ -1101,9 +1102,9 @@ export function createApp(
     const { q, page } = query.data;
     const rows = await withTenantContext(requireDb(), tenant, async (tx) => tx.party.findMany({
       where: { businessId: tenant.businessId, archivedAt: null, name: { contains: q, mode: "insensitive" } },
-      orderBy: [{ name: "asc" }, { id: "asc" }], skip: (page - 1) * 25, take: 25,
+      orderBy: [{ name: "asc" }, { id: "asc" }], skip: (page - 1) * 25, take: 26,
     }));
-    return { rows, page };
+    return { rows: rows.slice(0, 25), page, hasMore: rows.length > 25 };
   });
 
   app.post("/v1/catalogue/parties", async (request, reply) => {
@@ -1117,6 +1118,25 @@ export function createApp(
       return { result, change: { id, version: 1 } };
     });
     return reply.code(201).send(row);
+  });
+
+  app.post("/v1/catalogue/parties/provisional", async (request, reply) => {
+    if (!requireAuth(request, reply)) return;
+    const tenant = requireTenantContext(request, reply);
+    if (!tenant || !verifyCsrf(request, reply)) return;
+    const parsed = provisionalPartyInput.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: "Invalid provisional party command" });
+    try {
+      return await acceptProvisionalParty(requireDb(), { businessId: tenant.businessId, userId: request.user.id,
+        membershipId: tenant.membership.id, role: tenant.membership.role,
+        locationId: tenant.membership.locationId }, parsed.data);
+    } catch (error) {
+      if (error instanceof ProvisionalPartyConflict) return reply.code(409).send({ error: error.message });
+      if (typeof error === "object" && error && "code" in error && error.code === "P2002") {
+        return reply.code(409).send({ error: "Provisional party ID or command is already in use" });
+      }
+      throw error;
+    }
   });
 
   app.patch("/v1/catalogue/parties/:id", async (request, reply) => {
@@ -1157,6 +1177,39 @@ export function createApp(
       units: await tx.unit.findMany({ where: { businessId: tenant.businessId, archivedAt: null }, orderBy: { code: "asc" } }),
       taxProfiles: await tx.taxProfile.findMany({ where: { businessId: tenant.businessId, archivedAt: null }, orderBy: { name: "asc" } }),
     }));
+  });
+
+  // Bounded choices for setup forms: do not download the entire catalogue to a device.
+  app.get("/v1/catalogue/choices", async (request, reply) => {
+    const tenant = masterContext(request, reply, false);
+    if (!tenant) return;
+    const parsed = listQuery.extend({ kind: z.enum(["items", "parties"]),
+      role: z.enum(["Stock", "Receivable", "Payable"]) }).safeParse(request.query);
+    if (!parsed.success) return reply.code(400).send({ error: "Invalid choice query" });
+    const { kind, q, page, role } = parsed.data;
+    if ((kind === "items") !== (role === "Stock")) return reply.code(400).send({ error: "Invalid choice role" });
+    return withTenantContext(requireDb(), tenant, async (tx) => {
+      const where = kind === "items" ? { businessId: tenant.businessId, archivedAt: null, kind: "Goods",
+        OR: [{ name: { contains: q, mode: "insensitive" as const } }, { barcode: { contains: q } }] } :
+        { businessId: tenant.businessId, archivedAt: null, ...(role === "Receivable" ? { isCustomer: true } : { isSupplier: true }),
+          name: { contains: q, mode: "insensitive" as const } };
+      const rows = kind === "items" ? await tx.item.findMany({ where, select: { id: true, name: true, kind: true },
+        orderBy: [{ name: "asc" }, { id: "asc" }], skip: (page - 1) * 25, take: 26 }) :
+        await tx.party.findMany({ where, select: { id: true, name: true, isCustomer: true, isSupplier: true },
+          orderBy: [{ name: "asc" }, { id: "asc" }], skip: (page - 1) * 25, take: 26 });
+      return { rows: rows.slice(0, 25), page, hasMore: rows.length > 25 };
+    });
+  });
+
+  app.get("/v1/catalogue/conversions", async (request, reply) => {
+    const tenant = masterContext(request, reply, false);
+    if (!tenant) return;
+    const parsed = z.object({ itemId: z.uuid() }).safeParse(request.query);
+    if (!parsed.success) return reply.code(400).send({ error: "Invalid item" });
+    return withTenantContext(requireDb(), tenant, async (tx) => ({ rows: await tx.itemUnitConversion.findMany({
+      where: { businessId: tenant.businessId, itemId: parsed.data.itemId, archivedAt: null },
+      orderBy: { id: "asc" }, select: { id: true, unitId: true, factor: true, version: true },
+    }) }));
   });
 
   app.post("/v1/catalogue/categories", async (request, reply) => {
@@ -1235,6 +1288,49 @@ export function createApp(
     }
   });
 
+  const setupVersion = z.object({ expectedVersion: z.number().int().positive(), archive: z.boolean().default(false) });
+  const setupEditors = [
+    { path: "categories", group: "category", input: categoryInput.extend(setupVersion.shape) },
+    { path: "units", group: "unit", input: unitInput.pick({ name: true }).extend(setupVersion.shape) },
+    { path: "tax-profiles", group: "tax_profile", input: taxInput.extend(setupVersion.shape) },
+    { path: "conversions", group: "conversion", input: conversionInput.pick({ factor: true }).extend(setupVersion.shape) },
+  ] as const;
+  for (const editor of setupEditors) {
+    app.patch(`/v1/catalogue/${editor.path}/:id`, async (request, reply) => {
+      const tenant = masterContext(request, reply, true);
+      if (!tenant) return;
+      const params = idParam.safeParse(request.params);
+      const parsed = editor.input.safeParse(request.body);
+      if (!params.success || !parsed.success) return reply.code(400).send({ error: "Invalid setup edit" });
+      const { expectedVersion, archive, ...data } = parsed.data;
+      try {
+        return await withBusinessChange(requireDb(), tenant.businessId, tenant.userId, `${editor.group}.edit`, async (tx) => {
+          const where = { id: params.data.id, businessId: tenant.businessId, version: expectedVersion, archivedAt: null };
+          const update = { ...data, version: { increment: 1 }, ...(archive ? { archivedAt: new Date() } : {}) };
+          let result;
+          if (editor.group === "category") {
+            if (!(await tx.category.updateMany({ where, data: update })).count) throw new Error("VERSION_CONFLICT");
+            result = await tx.category.findUniqueOrThrow({ where: { id: params.data.id } });
+          } else if (editor.group === "unit") {
+            if (!(await tx.unit.updateMany({ where, data: update })).count) throw new Error("VERSION_CONFLICT");
+            result = await tx.unit.findUniqueOrThrow({ where: { id: params.data.id } });
+          } else if (editor.group === "tax_profile") {
+            if (!(await tx.taxProfile.updateMany({ where, data: update })).count) throw new Error("VERSION_CONFLICT");
+            result = await tx.taxProfile.findUniqueOrThrow({ where: { id: params.data.id } });
+          } else {
+            if (!(await tx.itemUnitConversion.updateMany({ where, data: update })).count) throw new Error("VERSION_CONFLICT");
+            result = await tx.itemUnitConversion.findUniqueOrThrow({ where: { id: params.data.id } });
+          }
+          return { result, change: { id: result.id, version: result.version, archived: archive } };
+        });
+      } catch (error) {
+        if (error instanceof Error && error.message === "VERSION_CONFLICT") return reply.code(409).send({ error: "Setup changed on another device; reload and review your edits" });
+        if (typeof error === "object" && error && "code" in error && error.code === "P2002") return reply.code(409).send({ error: "Setup name already exists in this business" });
+        throw error;
+      }
+    });
+  }
+
   app.get("/v1/catalogue/items", async (request, reply) => {
     const tenant = masterContext(request, reply, false);
     if (!tenant) return;
@@ -1244,9 +1340,9 @@ export function createApp(
     const rows = await withTenantContext(requireDb(), tenant, async (tx) => tx.item.findMany({
       where: { businessId: tenant.businessId, archivedAt: null,
         OR: [{ name: { contains: q, mode: "insensitive" } }, { barcode: { contains: q } }] },
-      orderBy: [{ name: "asc" }, { id: "asc" }], skip: (page - 1) * 25, take: 25,
+      orderBy: [{ name: "asc" }, { id: "asc" }], skip: (page - 1) * 25, take: 26,
     }));
-    return { rows, page };
+    return { rows: rows.slice(0, 25), page, hasMore: rows.length > 25 };
   });
 
   app.post("/v1/catalogue/items", async (request, reply) => {

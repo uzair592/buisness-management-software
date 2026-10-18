@@ -135,6 +135,29 @@ test("M04 catalogue persists, isolates tenants, enforces versions and sellable r
   assert.ok(cashierBootstrap.json().catalogue.items.some((row: { id: string }) => row.id === item.json().id));
   assert.ok(!/CASH|Electricity|expenseCategory|classification|cost|profit/i.test(JSON.stringify(cashierBootstrap.json().catalogue)));
 
+  const provisional = { commandId: crypto.randomUUID(), provisionalPartyId: crypto.randomUUID(),
+    deviceEnrollmentId: cashierDeviceId, datasetEpoch: cashierBootstrap.json().business.datasetEpoch,
+    name: "Counter customer", isCustomer: true, isSupplier: false };
+  const [accepted, repeated] = await Promise.all([
+    send(cashier, "POST", "/v1/catalogue/parties/provisional", provisional),
+    send(cashier, "POST", "/v1/catalogue/parties/provisional", provisional),
+  ]);
+  assert.equal(accepted.statusCode, 200, accepted.body);
+  assert.equal(repeated.statusCode, 200, repeated.body);
+  assert.deepEqual(repeated.json(), accepted.json());
+  assert.equal(accepted.json().partyId, provisional.provisionalPartyId);
+  assert.equal((await send(cashier, "POST", "/v1/catalogue/parties/provisional",
+    { ...provisional, name: "Changed retry" })).statusCode, 409);
+  assert.equal((await send(b, "POST", "/v1/catalogue/parties/provisional", provisional)).statusCode, 409);
+  assert.equal((await send(cashier, "POST", "/v1/catalogue/parties/provisional",
+    { ...provisional, commandId: crypto.randomUUID(), deviceEnrollmentId: crypto.randomUUID() })).statusCode, 409);
+  const persisted = await withTenantContext(db, { businessId: a.id }, async (tx) => ({
+    parties: await tx.party.count({ where: { id: provisional.provisionalPartyId } }),
+    receipts: await tx.commandReceipt.count({ where: { commandId: provisional.commandId } }),
+    changes: await tx.changeBatch.count({ where: { payload: { path: ["id"], equals: provisional.provisionalPartyId } } }),
+  }));
+  assert.deepEqual(persisted, { parties: 1, receipts: 1, changes: 1 });
+
   const locations = await send(a, "GET", "/v1/locations");
   const enrolled = await send(a, "POST", "/v1/devices/enroll", { deviceName: "Catalogue test", locationId: locations.json()[0].id });
   assert.equal(enrolled.statusCode, 201, enrolled.body);
@@ -172,6 +195,58 @@ test("M04 catalogue persists, isolates tenants, enforces versions and sellable r
   const reloaded = await send(a, "GET", "/v1/catalogue/items?q=Mineral&page=1");
   assert.equal(reloaded.statusCode, 200, reloaded.body);
   assert.equal(reloaded.json().rows[0].version, 2);
+  for (let index = 0; index < 27; index++) {
+    const created = await send(a, "POST", "/v1/catalogue/items", {
+      ...itemData, name: `Setup stock ${String(index).padStart(2, "0")}`,
+      sku: `SETUP-${index}`, barcode: `SETUP-BARCODE-${index}`,
+    });
+    assert.equal(created.statusCode, 201, created.body);
+  }
+  const choices = await send(a, "GET", "/v1/catalogue/choices?kind=items&role=Stock&q=Setup%20stock&page=1");
+  assert.equal(choices.statusCode, 200, choices.body);
+  assert.equal(choices.json().rows.length, 25);
+  assert.equal(choices.json().hasMore, true);
+  const secondPage = await send(a, "GET", "/v1/catalogue/choices?kind=items&role=Stock&q=Setup%20stock&page=2");
+  assert.equal(secondPage.json().rows.length, 2);
+  assert.equal(secondPage.json().hasMore, false);
+  assert.equal((await send(b, "GET", "/v1/catalogue/choices?kind=items&role=Stock&q=Setup%20stock&page=1")).json().rows.length, 0);
+  assert.equal((await send(a, "GET", "/v1/catalogue/choices?kind=items&role=Payable")).statusCode, 400);
+  const dueChoices = await send(a, "GET", "/v1/catalogue/choices?kind=parties&role=Receivable&q=Local");
+  assert.equal(dueChoices.statusCode, 200, dueChoices.body);
+  assert.equal(dueChoices.json().rows.length, 0); // archived parties are excluded
+  const categoryEdit = await send(a, "PATCH", `/v1/catalogue/categories/${cat.json().id}`,
+    { name: "Drinks", expectedVersion: 1 });
+  assert.equal(categoryEdit.statusCode, 200, categoryEdit.body);
+  assert.equal(categoryEdit.json().version, 2);
+  assert.equal((await send(a, "PATCH", `/v1/catalogue/categories/${cat.json().id}`,
+    { name: "Stale", expectedVersion: 1 })).statusCode, 409);
+  assert.equal((await send(b, "PATCH", `/v1/catalogue/categories/${cat.json().id}`,
+    { name: "Other tenant", expectedVersion: 2 })).statusCode, 409);
+  const taxEdit = await send(a, "PATCH", `/v1/catalogue/tax-profiles/${tax.json().id}`,
+    { name: "Generic 5", rate: "5.0000", mode: "Inclusive", expectedVersion: 1 });
+  assert.equal(taxEdit.statusCode, 200, taxEdit.body);
+  const unitEdit = await send(a, "PATCH", `/v1/catalogue/units/${box.json().id}`,
+    { name: "Carton", expectedVersion: 1 });
+  assert.equal(unitEdit.statusCode, 200, unitEdit.body);
+  const factorEdit = await send(a, "PATCH", `/v1/catalogue/conversions/${conversion.json().id}`,
+    { factor: "24.000000", expectedVersion: 1 });
+  assert.equal(factorEdit.statusCode, 200, factorEdit.body);
+  assert.equal((await send(a, "GET", `/v1/catalogue/conversions?itemId=${item.json().id}`)).json().rows[0].factor, "24");
+  const archiveConversion = await send(a, "PATCH", `/v1/catalogue/conversions/${conversion.json().id}`,
+    { factor: "24", expectedVersion: 2, archive: true });
+  assert.equal(archiveConversion.statusCode, 200, archiveConversion.body);
+  assert.equal((await send(a, "GET", `/v1/catalogue/conversions?itemId=${item.json().id}`)).json().rows.length, 0);
+  const pullSetup = await send(a, "GET", `/v1/sync/pull?deviceEnrollmentId=${enrolled.json().id}&afterCursor=${ownerPull.json().nextCursor}`);
+  assert.equal(pullSetup.statusCode, 200, pullSetup.body);
+  assert.ok(pullSetup.json().changes.some((change: { action: string; row: { id: string; version: number } }) =>
+    change.action === "category.edit" && change.row.id === cat.json().id && change.row.version === 2));
+  const archiveCategory = await send(a, "PATCH", `/v1/catalogue/categories/${cat.json().id}`,
+    { name: "Drinks", expectedVersion: 2, archive: true });
+  assert.equal(archiveCategory.statusCode, 200, archiveCategory.body);
+  assert.equal((await send(a, "GET", "/v1/catalogue/setup")).json().categories.some((row: { id: string }) => row.id === cat.json().id), false);
+  const retainedItem = await withTenantContext(db, { businessId: a.id }, async (tx) =>
+    tx.item.findUniqueOrThrow({ where: { id: item.json().id }, include: { category: true } }));
+  assert.equal(retainedItem.category?.name, "Drinks");
   const changes = await withTenantContext(db, { businessId: a.id }, async (tx) =>
     tx.changeBatch.findMany({ where: { businessId: a.id }, orderBy: { cursor: "asc" } }));
   assert.ok(changes.length >= 16);

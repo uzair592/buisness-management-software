@@ -12,14 +12,47 @@ const blankEntry = (): Entry => ({ kind: "Money", referenceId: "", reference: ""
 type OpeningPreview = { expectedCursor: string; preview: { money: string; stock: string;
   receivable: string; payable: string; equity: string; documents: Array<{ reference: string }>; stockMovements: number } };
 
+function OpeningChoice({ kind, value, onChange, role, businessId }: {
+  kind: "items" | "parties"; value: string; onChange: (id: string) => void;
+  role: Entry["kind"]; businessId: string;
+}) {
+  const [query, setQuery] = useState("");
+  const [page, setPage] = useState(1);
+  const [rows, setRows] = useState<Array<Choice>>([]);
+  const [selected, setSelected] = useState<Choice | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    const controller = new AbortController();
+    setError("");
+    void fetch(`/v1/catalogue/choices?kind=${kind}&role=${role}&q=${encodeURIComponent(query)}&page=${page}`, { signal: controller.signal })
+      .then((response) => { if (!response.ok) throw new Error("Could not search choices."); return response.json() as Promise<{ rows: Choice[]; hasMore: boolean }>; })
+      .then((data) => { setRows(data.rows); setHasMore(data.hasMore); if (value) {
+        const current = data.rows.find((row) => row.id === value);
+        if (current) setSelected(current);
+      } })
+      .catch((cause) => { if (cause instanceof Error && cause.name !== "AbortError") setError(cause.message); });
+    return () => controller.abort();
+  }, [kind, role, query, page, businessId, value]);
+  const options = selected && !rows.some((row) => row.id === selected.id) ? [selected, ...rows] : rows;
+  return <div>
+    <input className="input" type="search" aria-label={`Search ${kind}`} placeholder={`Search ${kind}`} value={query}
+      onChange={(event) => { setQuery(event.target.value); setPage(1); }} />
+    <select className="input" required value={value} onChange={(event) => {
+      onChange(event.target.value); setSelected(options.find((row) => row.id === event.target.value) ?? null);
+    }}><option value="">Choose…</option>{options.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}</select>
+    <div className="live-pagination"><button type="button" className="btn-ghost" disabled={page === 1} onClick={() => setPage(page - 1)}>Previous</button>
+      <span>Page {page}</span><button type="button" className="btn-ghost" disabled={!hasMore} onClick={() => setPage(page + 1)}>Next</button></div>
+    {error && <span role="alert">{error}</span>}
+  </div>;
+}
+
 export function AccountSetupPage() {
   const auth = useAuth();
   const { sample } = usePreview();
   const allowed = auth.activeMembership?.role === "Owner" || auth.activeMembership?.role === "Accountant";
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<Choice[]>([]);
-  const [items, setItems] = useState<Choice[]>([]);
-  const [parties, setParties] = useState<Choice[]>([]);
   const [locations, setLocations] = useState<Choice[]>([]);
   const [posted, setPosted] = useState<{ id: string } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -39,14 +72,13 @@ export function AccountSetupPage() {
     setLoading(true); setError("");
     try {
       const responses = await Promise.all([
-        fetch("/v1/accounts/setup", { signal }), fetch("/v1/catalogue/items", { signal }),
-        fetch("/v1/catalogue/parties", { signal }), fetch("/v1/locations", { signal }),
+        fetch("/v1/accounts/setup", { signal }), fetch("/v1/locations", { signal }),
         fetch("/v1/opening", { signal }),
       ]);
       if (responses.some((response) => !response.ok)) throw new Error("Could not load account setup. Check your access and connection.");
-      const [setup, itemData, partyData, locationData, opening] = await Promise.all(responses.map((r) => r.json()));
+      const [setup, locationData, opening] = await Promise.all(responses.map((r) => r.json()));
       setAccounts(setup.accounts); setCategories(setup.expenseCategories);
-      setItems(itemData.rows); setParties(partyData.rows); setLocations(locationData);
+      setLocations(locationData);
       setPosted(opening);
     } catch (cause) {
       if (cause instanceof Error && cause.name !== "AbortError") setError(cause.message);
@@ -157,10 +189,13 @@ export function AccountSetupPage() {
             <div className="account-system-prompt"><p>Initialize the inventory, dues and equity ledger accounts before previewing.</p><button className="btn-secondary" disabled={busy} onClick={() => void perform(async () => { await api("/v1/accounts/system", {}); setNotice("Posting accounts initialized."); })}>Initialize posting accounts</button></div>}
           <form onSubmit={(event) => void requestPreview(event)} className="account-opening-form">
             <label>Opening date<input className="input" type="date" required value={businessDate} onChange={(e) => { setBusinessDate(e.target.value); setPreview(null); }} /></label>
-            {entries.map((row, index) => { const choices = row.kind === "Money" ? accounts.filter((a) => ["Cash", "Bank"].includes(a.kind)) : row.kind === "Stock" ? items.filter((i) => i.kind === "Goods") : parties.filter((p) => row.kind === "Receivable" ? p.isCustomer : p.isSupplier);
+            {entries.map((row, index) => { const choices = accounts.filter((a) => ["Cash", "Bank"].includes(a.kind));
               return <div className="account-opening-row" key={index}>
                 <label>Type<select className="input" value={row.kind} onChange={(e) => updateEntry(index, { kind: e.target.value as Entry["kind"], referenceId: "" })}><option value="Money">Cash / bank</option><option value="Stock">Stock</option><option value="Receivable">Customer owes us</option><option value="Payable">We owe supplier</option></select></label>
-                <label>{row.kind === "Money" ? "Account" : row.kind === "Stock" ? "Item" : "Party"}<select className="input" required value={row.referenceId} onChange={(e) => updateEntry(index, { referenceId: e.target.value })}><option value="">Choose…</option>{choices.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
+                <label>{row.kind === "Money" ? "Account" : row.kind === "Stock" ? "Item" : "Party"}{row.kind === "Money" ?
+                  <select className="input" required value={row.referenceId} onChange={(e) => updateEntry(index, { referenceId: e.target.value })}><option value="">Choose…</option>{choices.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select> :
+                  <OpeningChoice key={`${index}-${row.kind}-${auth.selectedBusinessId}`} kind={row.kind === "Stock" ? "items" : "parties"} role={row.kind}
+                    businessId={auth.selectedBusinessId ?? ""} value={row.referenceId} onChange={(id) => updateEntry(index, { referenceId: id })} />}</label>
                 {row.kind === "Stock" && <><label>Location<select className="input" required value={row.locationId} onChange={(e) => updateEntry(index, { locationId: e.target.value })}><option value="">Choose…</option>{locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}</select></label><label>Quantity<input className="input" inputMode="decimal" required pattern="[0-9]+([.][0-9]{1,6})?" value={row.quantity} onChange={(e) => updateEntry(index, { quantity: e.target.value })} /></label></>}
                 {(row.kind === "Receivable" || row.kind === "Payable") && <label>Old document reference<input className="input" required maxLength={120} value={row.reference} onChange={(e) => updateEntry(index, { reference: e.target.value })} /></label>}
                 <label>{row.kind === "Stock" ? "Stock value" : "Amount"}<input className="input" required inputMode="decimal" pattern="[0-9]+([.][0-9]{1,2})?" value={row.amount} onChange={(e) => updateEntry(index, { amount: e.target.value })} /></label>
