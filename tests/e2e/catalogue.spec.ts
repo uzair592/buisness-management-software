@@ -90,7 +90,16 @@ test("M04 setup and opening search reach goods beyond the first page", async ({ 
   await dialog.getByLabel("Units per base").fill("12");
   await dialog.getByRole("button", { name: "Add conversion" }).click();
   await expect(dialog.getByText("Box: 1 = 12 base units")).toBeVisible();
+  await dialog.getByRole("button", { name: "Edit", exact: true }).click();
+  await dialog.getByLabel("Base units per alternate").fill("24");
+  await dialog.getByRole("button", { name: "Save conversion" }).click();
+  await expect(dialog.getByText("Box: 1 = 24 base units")).toBeVisible();
   await dialog.getByRole("button", { name: "Cancel" }).click();
+  await page.getByRole("button", { name: "Edit", exact: true }).last().click();
+  const taxEditor = page.getByRole("dialog", { name: "Edit tax-profiles" });
+  await taxEditor.getByLabel("Rate (%)").fill("6.0000");
+  await taxEditor.getByRole("button", { name: "Save changes" }).click();
+  await expect(page.getByText("General 5 · 6% Exclusive")).toBeVisible();
   await page.goto("/cash-bank");
   await page.locator(".account-opening-row select").first().selectOption("Stock");
   await page.getByRole("searchbox", { name: "Search items" }).fill("Opening good 26");

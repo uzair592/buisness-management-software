@@ -1268,6 +1268,49 @@ export function createApp(
     }
   });
 
+  const setupVersion = z.object({ expectedVersion: z.number().int().positive(), archive: z.boolean().default(false) });
+  const setupEditors = [
+    { path: "categories", group: "category", input: categoryInput.extend(setupVersion.shape) },
+    { path: "units", group: "unit", input: unitInput.pick({ name: true }).extend(setupVersion.shape) },
+    { path: "tax-profiles", group: "tax_profile", input: taxInput.extend(setupVersion.shape) },
+    { path: "conversions", group: "conversion", input: conversionInput.pick({ factor: true }).extend(setupVersion.shape) },
+  ] as const;
+  for (const editor of setupEditors) {
+    app.patch(`/v1/catalogue/${editor.path}/:id`, async (request, reply) => {
+      const tenant = masterContext(request, reply, true);
+      if (!tenant) return;
+      const params = idParam.safeParse(request.params);
+      const parsed = editor.input.safeParse(request.body);
+      if (!params.success || !parsed.success) return reply.code(400).send({ error: "Invalid setup edit" });
+      const { expectedVersion, archive, ...data } = parsed.data;
+      try {
+        return await withBusinessChange(requireDb(), tenant.businessId, tenant.userId, `${editor.group}.edit`, async (tx) => {
+          const where = { id: params.data.id, businessId: tenant.businessId, version: expectedVersion, archivedAt: null };
+          const update = { ...data, version: { increment: 1 }, ...(archive ? { archivedAt: new Date() } : {}) };
+          let result;
+          if (editor.group === "category") {
+            if (!(await tx.category.updateMany({ where, data: update })).count) throw new Error("VERSION_CONFLICT");
+            result = await tx.category.findUniqueOrThrow({ where: { id: params.data.id } });
+          } else if (editor.group === "unit") {
+            if (!(await tx.unit.updateMany({ where, data: update })).count) throw new Error("VERSION_CONFLICT");
+            result = await tx.unit.findUniqueOrThrow({ where: { id: params.data.id } });
+          } else if (editor.group === "tax_profile") {
+            if (!(await tx.taxProfile.updateMany({ where, data: update })).count) throw new Error("VERSION_CONFLICT");
+            result = await tx.taxProfile.findUniqueOrThrow({ where: { id: params.data.id } });
+          } else {
+            if (!(await tx.itemUnitConversion.updateMany({ where, data: update })).count) throw new Error("VERSION_CONFLICT");
+            result = await tx.itemUnitConversion.findUniqueOrThrow({ where: { id: params.data.id } });
+          }
+          return { result, change: { id: result.id, version: result.version, archived: archive } };
+        });
+      } catch (error) {
+        if (error instanceof Error && error.message === "VERSION_CONFLICT") return reply.code(409).send({ error: "Setup changed on another device; reload and review your edits" });
+        if (typeof error === "object" && error && "code" in error && error.code === "P2002") return reply.code(409).send({ error: "Setup name already exists in this business" });
+        throw error;
+      }
+    });
+  }
+
   app.get("/v1/catalogue/items", async (request, reply) => {
     const tenant = masterContext(request, reply, false);
     if (!tenant) return;
