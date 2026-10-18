@@ -10,7 +10,7 @@ Last planning update: 2026-10-18.
 | M02 Identity and devices | Core complete; PR #3, #4 and #5 merged | [M02 evidence](docs/evidence/m02/README.md); Prisma 7 prerequisite, global username auth, PostgreSQL RLS under restricted `bms_runtime`, composite FKs, device enrolment/signed leases, partitioned IndexedDB bootstrap, verified upgrade and fresh installation paths; historical checksum mismatch remains for upgraded PR #3 databases |
 | M03 Domain and journal | Foundation on main; remaining acceptance open | PR #7 restored the posting foundation and PR #8 serialized device configuration writes with posting cursors; full domain acceptance remains open. |
 | M04 Catalogue and opening balances | In progress | PR #9 and #10 merged. PR #10 added account setup, role-filtered catalogue bootstrap/pull, previewed one-time opening and a provisional-party ordering contract. The current M04 follow-up adds paged opening choices and category/tax/conversion setup UI; provisional-party server acceptance and full M04 gate remain open. |
-| M05 First sale | In progress, review branch | Draft/posted sale schema, online billing UI and atomic journal/stock/payment path under test. No acceptance claim yet. |
+| M05 First sale | In review, PR #12 | Draft/posted sale schema, online billing UI and atomic journal/stock/payment path; [exact-head CI](https://github.com/uzair592/buisness-management-software/actions/runs/39121398500) passed on `35e3efc` before the final account-setup change. Final-head CI pending. |
 | M06 Offline and two-device sync | Not started | — |
 | M07 Purchases and money | Not started | — |
 | M08 Returns and inventory lifecycle | Not started | — |
@@ -23,13 +23,14 @@ Last planning update: 2026-10-18.
 
 ## Next action
 
-PR #11 merged at `bb5f96506acafcf02981adb6a73dc233d856ca62`. M05 online sale is now under implementation on a separate branch. Review its actual database and browser evidence before any billing acceptance claim. M04 large setup choices and M03 valuation fixtures remain tracked; M05 currently rejects unvalued/insufficient stock instead of posting a provisional margin.
+PR #11 merged at `bb5f96506acafcf02981adb6a73dc233d856ca62`. Review M05 [PR #12](https://github.com/uzair592/buisness-management-software/pull/12), including real database and browser evidence, before merging. M04 large setup choices and M03 valuation fixtures remain tracked; M05 rejects unvalued/insufficient stock instead of posting a provisional margin.
 
 ## M05 online sale work in progress
 
 - Additive schema migration creates tenant-scoped sale documents, immutable line/payment snapshots, device sale counter and composite business foreign keys. Drafts have no issued number; a posted invoice gets a unique device-prefixed number in the posting transaction.
 - Server recomputes exact amounts, tax, discount, cash change, bank reference, receivable and resolved average stock cost. A posted sale, journal, stock movement, payments, audit event, command receipt and change cursor share one transaction. Negative stock and unvalued deficits are rejected in this first online slice.
-- Live billing uses a visible editable cart and sticky totals at laptop widths, then opens the saved server snapshot for history and print. Sample mode remains isolated. The M05 gate is **not complete** until new real DB/browser tests and exact-head CI pass, including fault/retry cases and mobile inspection.
+- Live billing uses a visible editable cart and sticky totals at laptop widths, then opens the saved server snapshot for history and print. Saved drafts resume after reload with the same document and command IDs. Sample mode remains isolated. The account setup screen offers the missing sales ledger initialization even when opening balances were already posted.
+- CI on `35e3efc` passed frozen install, migrations, `pnpm check`, real PostgreSQL database and runtime tests, and 16 browser tests. The browser artifact includes 1366 × 768 billing and saved receipt screenshots, plus 390 × 844 billing. DB tests cover cash change, bank split, partial credit, walk-in, credit customer requirement, tenant isolation, concurrent retry and transaction rollback. The final account-setup change requires a fresh exact-head CI run. Physical hardware, offline sale and two-device replication are outside this gate.
 
 ## M04 catalogue follow-up (in review)
 

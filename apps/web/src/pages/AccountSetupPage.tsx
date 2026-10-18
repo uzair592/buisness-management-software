@@ -184,9 +184,9 @@ export function AccountSetupPage() {
         <form className="account-inline-form" onSubmit={(event) => void createCategory(event)}><label>New expense category<input className="input" required maxLength={120} value={categoryName} onChange={(e) => setCategoryName(e.target.value)} placeholder="e.g. Utilities" /></label><button className="btn-secondary" disabled={busy}>Add category</button></form>
       </Panel>
       <Panel><div className="account-section-head"><div><h2>Opening balances</h2><p>One opening batch per business. Preview exact totals before posting.</p></div><span className="account-state">{posted ? "Posted" : "Not posted"}</span></div>
+        {!(["OPEN_INVENTORY", "OPEN_RECEIVABLE", "OPEN_PAYABLE", "OPEN_EQUITY", "SALE_REVENUE", "SALE_TAX", "SALE_COGS"].every((code) => accounts.some((a) => a.code === code))) &&
+          <div className="account-system-prompt"><p>Initialize the inventory, dues, equity and sales ledger accounts before billing.</p><button className="btn-secondary" disabled={busy} onClick={() => void perform(async () => { await api("/v1/accounts/system", {}); setNotice("Posting accounts initialized."); })}>Initialize posting accounts</button></div>}
         {posted ? <p role="status">Opening batch recorded. Its journal, stock and party documents are preserved. Batch ID: <code>{posted.id}</code></p> : <>
-          {!(["OPEN_INVENTORY", "OPEN_RECEIVABLE", "OPEN_PAYABLE", "OPEN_EQUITY"].every((code) => accounts.some((a) => a.code === code))) &&
-            <div className="account-system-prompt"><p>Initialize the inventory, dues and equity ledger accounts before previewing.</p><button className="btn-secondary" disabled={busy} onClick={() => void perform(async () => { await api("/v1/accounts/system", {}); setNotice("Posting accounts initialized."); })}>Initialize posting accounts</button></div>}
           <form onSubmit={(event) => void requestPreview(event)} className="account-opening-form">
             <label>Opening date<input className="input" type="date" required value={businessDate} onChange={(e) => { setBusinessDate(e.target.value); setPreview(null); }} /></label>
             {entries.map((row, index) => { const choices = accounts.filter((a) => ["Cash", "Bank"].includes(a.kind));
