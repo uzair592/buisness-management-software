@@ -19,6 +19,7 @@ import {
 } from "@business/contracts";
 import { type Prisma, type PrismaClient, ChangedCommandError, withBusinessChange, withTenantContext } from "@business/db";
 import { openingInput, prepareOpening, commitOpening, systemAccounts, OpeningConflict } from "./opening.js";
+import { provisionalPartyInput, acceptProvisionalParty, ProvisionalPartyConflict } from "./provisional-party.js";
 import { hashPassword, verifyPassword } from "./auth/password.js";
 import {
   createSession,
@@ -1117,6 +1118,25 @@ export function createApp(
       return { result, change: { id, version: 1 } };
     });
     return reply.code(201).send(row);
+  });
+
+  app.post("/v1/catalogue/parties/provisional", async (request, reply) => {
+    if (!requireAuth(request, reply)) return;
+    const tenant = requireTenantContext(request, reply);
+    if (!tenant || !verifyCsrf(request, reply)) return;
+    const parsed = provisionalPartyInput.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: "Invalid provisional party command" });
+    try {
+      return await acceptProvisionalParty(requireDb(), { businessId: tenant.businessId, userId: request.user.id,
+        membershipId: tenant.membership.id, role: tenant.membership.role,
+        locationId: tenant.membership.locationId }, parsed.data);
+    } catch (error) {
+      if (error instanceof ProvisionalPartyConflict) return reply.code(409).send({ error: error.message });
+      if (typeof error === "object" && error && "code" in error && error.code === "P2002") {
+        return reply.code(409).send({ error: "Provisional party ID or command is already in use" });
+      }
+      throw error;
+    }
   });
 
   app.patch("/v1/catalogue/parties/:id", async (request, reply) => {

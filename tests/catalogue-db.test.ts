@@ -135,6 +135,29 @@ test("M04 catalogue persists, isolates tenants, enforces versions and sellable r
   assert.ok(cashierBootstrap.json().catalogue.items.some((row: { id: string }) => row.id === item.json().id));
   assert.ok(!/CASH|Electricity|expenseCategory|classification|cost|profit/i.test(JSON.stringify(cashierBootstrap.json().catalogue)));
 
+  const provisional = { commandId: crypto.randomUUID(), provisionalPartyId: crypto.randomUUID(),
+    deviceEnrollmentId: cashierDeviceId, datasetEpoch: cashierBootstrap.json().business.datasetEpoch,
+    name: "Counter customer", isCustomer: true, isSupplier: false };
+  const [accepted, repeated] = await Promise.all([
+    send(cashier, "POST", "/v1/catalogue/parties/provisional", provisional),
+    send(cashier, "POST", "/v1/catalogue/parties/provisional", provisional),
+  ]);
+  assert.equal(accepted.statusCode, 200, accepted.body);
+  assert.equal(repeated.statusCode, 200, repeated.body);
+  assert.deepEqual(repeated.json(), accepted.json());
+  assert.equal(accepted.json().partyId, provisional.provisionalPartyId);
+  assert.equal((await send(cashier, "POST", "/v1/catalogue/parties/provisional",
+    { ...provisional, name: "Changed retry" })).statusCode, 409);
+  assert.equal((await send(b, "POST", "/v1/catalogue/parties/provisional", provisional)).statusCode, 409);
+  assert.equal((await send(cashier, "POST", "/v1/catalogue/parties/provisional",
+    { ...provisional, commandId: crypto.randomUUID(), deviceEnrollmentId: crypto.randomUUID() })).statusCode, 409);
+  const persisted = await withTenantContext(db, { businessId: a.id }, async (tx) => ({
+    parties: await tx.party.count({ where: { id: provisional.provisionalPartyId } }),
+    receipts: await tx.commandReceipt.count({ where: { commandId: provisional.commandId } }),
+    changes: await tx.changeBatch.count({ where: { payload: { path: ["id"], equals: provisional.provisionalPartyId } } }),
+  }));
+  assert.deepEqual(persisted, { parties: 1, receipts: 1, changes: 1 });
+
   const locations = await send(a, "GET", "/v1/locations");
   const enrolled = await send(a, "POST", "/v1/devices/enroll", { deviceName: "Catalogue test", locationId: locations.json()[0].id });
   assert.equal(enrolled.statusCode, 201, enrolled.body);
