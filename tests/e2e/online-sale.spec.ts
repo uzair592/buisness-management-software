@@ -46,4 +46,10 @@ test("M05 live billing saves a multi-line sale, reopens and prints its snapshot 
   await page.reload();
   await expect(page.getByRole("button", { name: "Print saved receipt" })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("saved-receipt-1366.png"), fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/sales/new");
+  await expect(page.getByRole("heading", { name: "New sale" })).toBeVisible();
+  const width = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, viewport: innerWidth }));
+  expect(width.scroll).toBeLessThanOrEqual(width.viewport + 1);
+  await page.screenshot({ path: testInfo.outputPath("billing-mobile-390.png"), fullPage: true });
 });

@@ -116,4 +116,24 @@ test("M05 online sale persists number, exact split, stock, journal and replay on
   }));
   assert.equal(failure.receipt, 0);
   assert.equal(failure.sale.number, null);
+
+  // Force a late unique-key failure after the dispatcher has written journal and stock.
+  // The document, number counter and receipt must roll back with those writes.
+  const collision = { ...walkIn, id: crypto.randomUUID(), commandId: crypto.randomUUID(),
+    lines: [{ ...walkIn.lines[0], id: draft.lines[0].id }],
+    payments: [{ ...walkIn.payments[0], id: crypto.randomUUID() }] };
+  assert.equal((await send(owner, "POST", "/v1/sales/drafts", collision)).statusCode, 201);
+  const lateFailure = await send(owner, "POST", `/v1/sales/${collision.id}/post`, { commandId: collision.commandId });
+  assert.equal(lateFailure.statusCode, 500);
+  const rollback = await withTenantContext(db, { businessId: owner.id }, async (tx) => ({
+    document: await tx.saleDocument.findUniqueOrThrow({ where: { id: collision.id } }),
+    receiptCount: await tx.commandReceipt.count({ where: { businessId: owner.id, commandId: collision.commandId } }),
+    eventCount: await tx.sourceEvent.count({ where: { businessId: owner.id, commandId: collision.commandId, effectKind: "sale" } }),
+    device: await tx.deviceEnrollment.findUniqueOrThrow({ where: { id: device.json().id } }),
+  }));
+  assert.equal(rollback.document.status, "Draft");
+  assert.equal(rollback.document.number, null);
+  assert.equal(rollback.receiptCount, 0);
+  assert.equal(rollback.eventCount, 0);
+  assert.equal(rollback.device.saleSequence.toString(), "2");
 });
