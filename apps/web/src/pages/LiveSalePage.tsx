@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useSearchParams } from "react-router-dom";
+import { liveQuery } from "dexie";
 import { allocatePayment, calculateDocument } from "@business/domain";
 import { Panel } from "@business/ui";
 import { useAuth } from "../context/AuthContext";
@@ -52,7 +53,7 @@ export function LiveSalePage() {
   const [queueRows, setQueueRows] = useState<LocalPendingRecord[]>([]);
   const [recoveryPassphrase, setRecoveryPassphrase] = useState("");
   const localDb = useCallback(() => {
-    if (!auth.user || !auth.selectedBusinessId) return null;
+    if (!auth.user?.id || !auth.selectedBusinessId) return null;
     const bound = localStorage.getItem(`bms_device_binding_${auth.selectedBusinessId}`);
     const raw = bound && localStorage.getItem(`bms_verified_bootstrap_${auth.selectedBusinessId}_${bound}`);
     if (!bound || !raw) return null;
@@ -62,7 +63,7 @@ export function LiveSalePage() {
         meta.enrollmentId !== bound || !Number.isInteger(meta.datasetEpoch)) return null;
       return getLocalDatabase(meta);
     } catch { return null; }
-  }, [auth.user, auth.selectedBusinessId]);
+  }, [auth.user?.id, auth.selectedBusinessId]);
   const load = useCallback(async (signal?: AbortSignal) => {
     setLoading(true); setError("");
     try {
@@ -95,6 +96,16 @@ export function LiveSalePage() {
   useEffect(() => {
     const db = localDb();
     if (!db) return;
+    const subscription = liveQuery(async () => ({
+      count: await db.pending.where("state").equals("queued").count(),
+      rows: await db.pending.where("state").anyOf("queued", "held", "blocked").toArray(),
+    })).subscribe({ next: ({ count, rows }) => { setQueueCount(count); setQueueRows(rows); },
+      error: () => setError("Could not read this device's saved issue queue") });
+    return () => subscription.unsubscribe();
+  }, [localDb]);
+  useEffect(() => {
+    const db = localDb();
+    if (!db) return;
     let active = true;
     let syncing = false;
     let failures = 0;
@@ -122,12 +133,13 @@ export function LiveSalePage() {
       }
     };
     void sync();
-    const onResume = () => { if (document.visibilityState === "visible") void sync(true); };
-    window.addEventListener("online", onResume);
-    document.addEventListener("visibilitychange", onResume);
+    const onOnline = () => { void sync(true); };
+    const onVisible = () => { if (document.visibilityState === "visible") void sync(true); };
+    window.addEventListener("online", onOnline);
+    document.addEventListener("visibilitychange", onVisible);
     const timer = window.setInterval(() => { if (document.visibilityState === "visible") void sync(); }, 30_000 + Math.floor(Math.random() * 10_000));
-    return () => { active = false; window.removeEventListener("online", onResume);
-      document.removeEventListener("visibilitychange", onResume); window.clearInterval(timer); };
+    return () => { active = false; window.removeEventListener("online", onOnline);
+      document.removeEventListener("visibilitychange", onVisible); window.clearInterval(timer); };
   }, [localDb, auth.csrfToken]);
   useEffect(() => {
     const draftId = params.get("draft");
