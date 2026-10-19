@@ -19,6 +19,7 @@ export interface LocalDeviceRecord {
   locationId: string;
   deviceName: string;
   numberPrefix: string;
+  saleSequence?: string;
   status: string;
   enrolledAt: string;
   revokedAt: string | null;
@@ -50,8 +51,18 @@ export interface LocalCatalogueRecord {
 
 export interface LocalPendingRecord {
   commandId: string;
-  state: "queued" | "blocked" | "held";
+  state: "queued" | "blocked" | "held" | "acknowledged";
   payload: unknown;
+  result?: unknown;
+  reason?: string;
+}
+
+export interface LocalIssuedSaleRecord {
+  id: string;
+  commandId: string;
+  number: string;
+  snapshot: unknown;
+  issuedAt: string;
 }
 
 export interface CatalogueSnapshot {
@@ -67,11 +78,11 @@ export interface CataloguePull {
   changes: Array<{ cursor: string; action: string; row: Record<string, unknown> }>;
 }
 
-const catalogueGroups = ["item", "party", "category", "unit", "tax_profile", "conversion", "account", "expense_category", "sale"] as const;
+const catalogueGroups = ["item", "party", "category", "unit", "tax_profile", "conversion", "account", "cash_account", "expense_category", "sale"] as const;
 const snapshotGroups: Record<string, string> = {
   items: "item", parties: "party", categories: "category", units: "unit",
   taxProfiles: "tax_profile", conversions: "conversion", accounts: "account",
-  expenseCategories: "expense_category", sales: "sale",
+  expenseCategories: "expense_category", sales: "sale", cashAccounts: "cash_account",
 };
 const cursorValue = (value: string): bigint => {
   if (!/^\d{1,19}$/.test(value)) throw new Error("Invalid sync cursor");
@@ -86,6 +97,7 @@ export class PartitionedLocalDatabase extends Dexie {
   syncState!: Table<LocalSyncStateRecord, string>;
   catalogue!: Table<LocalCatalogueRecord, string>;
   pending!: Table<LocalPendingRecord, string>;
+  issuedSales!: Table<LocalIssuedSaleRecord, string>;
 
   constructor(dbName: string) {
     super(dbName);
@@ -104,6 +116,12 @@ export class PartitionedLocalDatabase extends Dexie {
       identity: "key", locations: "id, code", device: "id, numberPrefix, status",
       lease: "id, deviceEnrollmentId, expiresAt", syncState: "key",
       catalogue: "key, group", pending: "commandId, state",
+    });
+    this.version(3).stores({
+      identity: "key", locations: "id, code", device: "id, numberPrefix, status",
+      lease: "id, deviceEnrollmentId, expiresAt", syncState: "key",
+      catalogue: "key, group", pending: "commandId, state",
+      issuedSales: "id, &commandId, &number",
     });
   }
 }
@@ -152,6 +170,13 @@ export async function applyCataloguePull(db: PartitionedLocalDatabase, pull: Cat
         const account = row as Record<string, unknown>;
         return { group: "account", row: account, key: `account:${account.id}` };
       });
+    }
+    if (change.action.startsWith("account.") && !permittedPrivateAccounts) {
+      if (change.action === "account.system_init") return [];
+      if (change.row.kind !== "Cash") throw new Error("Unexpected cashier account change scope");
+      if (Object.keys(change.row).some((key) => !["id", "name", "kind", "archivedAt"].includes(key)))
+        throw new Error("Private account data in cashier change");
+      return [{ group: "cash_account", row: change.row, key: `cash_account:${change.row.id}` }];
     }
     const group = change.action.split(".")[0];
     if (!catalogueGroups.includes(group as typeof catalogueGroups[number]) ||

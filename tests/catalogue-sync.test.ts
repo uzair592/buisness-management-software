@@ -30,7 +30,7 @@ function identity(role: "Owner" | "Cashier" = "Cashier"): IdentityBootstrap {
 function snapshot(business: IdentityBootstrap["business"], cursor = "4") {
   return { business, syncCursor: cursor, catalogue: {
     items: [{ id: itemId, name: "A", salePrice: "10.00" }], parties: [], categories: [],
-    units: [], taxProfiles: [], conversions: [], sales: [], accountSetup: null,
+    units: [], taxProfiles: [], conversions: [], sales: [], cashAccounts: [], accountSetup: null,
   } };
 }
 

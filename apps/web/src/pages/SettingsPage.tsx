@@ -359,6 +359,7 @@ export function SettingsPage() {
         bootstrapData.membership.id !== device.membershipId) throw new Error("Bootstrap identity scope changed");
       await bootstrapLocalIdentity(db, bootstrapData);
       await installCatalogueSnapshot(db, bootstrapData, ["Owner", "Accountant"].includes(bootstrapData.membership.role));
+      await db.identity.put({ key: "user", value: auth.user });
       const cached = await readCachedIdentity(db);
       setLocalCache(cached);
 
@@ -372,8 +373,11 @@ export function SettingsPage() {
           bootstrappedAt: new Date().toISOString(),
         }),
       );
+      localStorage.setItem("bms_last_bootstrap", JSON.stringify({ userId: auth.user!.id,
+        businessId: auth.selectedBusinessId!, enrollmentId: device.id,
+        datasetEpoch: bootstrapData.business.datasetEpoch }));
 
-      setBootstrapStatus("Permitted catalogue cached. Online billing remains required while offline issue is under development.");
+      setBootstrapStatus("Permitted catalogue cached. Cash bills can be saved on this device while disconnected; cloud acceptance follows reconnect.");
     } catch (err: unknown) {
       setBootstrapStatus(`Bootstrap error: ${err instanceof Error ? err.message : "Unknown error"}`);
     }
@@ -394,7 +398,7 @@ export function SettingsPage() {
         const pull = await response.json() as CataloguePull & { hasMore: boolean };
         await applyCataloguePull(db, pull, ["Owner", "Accountant"].includes(localCache.membership?.role ?? ""));
         if (!pull.hasMore) {
-          setBootstrapStatus(`Catalogue updated through cursor ${pull.nextCursor}. Online billing remains required.`);
+          setBootstrapStatus(`Catalogue updated through cursor ${pull.nextCursor}.`);
           return;
         }
       }

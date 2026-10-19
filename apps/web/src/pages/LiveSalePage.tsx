@@ -4,6 +4,9 @@ import { useSearchParams } from "react-router-dom";
 import { allocatePayment, calculateDocument } from "@business/domain";
 import { Panel } from "@business/ui";
 import { useAuth } from "../context/AuthContext";
+import { getLocalDatabase, readCachedIdentity } from "../db/index";
+import { issueOfflineCashSale, type OfflineCashInput } from "../db/offline-sale";
+import { pushQueuedSales } from "../db/offline-sync";
 
 type Item = { id: string; name: string; kind: "Goods" | "Service"; barcode: string | null;
   salePrice: string; baseUnitId: string | null; taxProfileId: string | null };
@@ -20,7 +23,7 @@ type SalePayload = { id: string; commandId: string; deviceEnrollmentId: string; 
   partyId: string | null; businessDate: string; documentDiscount: string; lines: CartLine[];
   payments: Array<{ id: string; accountId: string; kind: "Cash" | "Bank"; applied: string;
     tendered: string | null; reference: string | null }> };
-type SavedSale = { id: string; number: string; total: string; paid: string; due: string; snapshot: unknown };
+type SavedSale = { id: string; number: string; total: string; paid: string; due: string; snapshot: unknown; local?: boolean };
 const money = /^\d+(?:\.\d{1,2})?$/;
 
 export function LiveSalePage() {
@@ -43,18 +46,64 @@ export function LiveSalePage() {
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState<SalePayload | null>(null);
   const [issued, setIssued] = useState<SavedSale | null>(null);
+  const [cachedWorkspace, setCachedWorkspace] = useState(false);
+  const [queueCount, setQueueCount] = useState(0);
+  const localDb = useCallback(() => {
+    if (!auth.user || !auth.selectedBusinessId) return null;
+    const bound = localStorage.getItem(`bms_device_binding_${auth.selectedBusinessId}`);
+    const raw = bound && localStorage.getItem(`bms_verified_bootstrap_${auth.selectedBusinessId}_${bound}`);
+    if (!bound || !raw) return null;
+    try {
+      const meta = JSON.parse(raw) as { userId: string; businessId: string; enrollmentId: string; datasetEpoch: number };
+      if (meta.userId !== auth.user.id || meta.businessId !== auth.selectedBusinessId ||
+        meta.enrollmentId !== bound || !Number.isInteger(meta.datasetEpoch)) return null;
+      return getLocalDatabase(meta);
+    } catch { return null; }
+  }, [auth.user, auth.selectedBusinessId]);
   const load = useCallback(async (signal?: AbortSignal) => {
     setLoading(true); setError("");
     try {
       const response = await fetch("/v1/sales/workspace", { signal });
       if (!response.ok) throw new Error("Could not load billing workspace. Check your access and connection.");
       const data = await response.json() as Workspace;
-      setWorkspace(data);
+      setWorkspace(data); setCachedWorkspace(false);
       setDeviceId((current) => current || data.devices[0]?.id || "");
-    } catch (cause) { if (cause instanceof Error && cause.name !== "AbortError") setError(cause.message); }
+    } catch (cause) { if (cause instanceof Error && cause.name !== "AbortError") {
+      const db = localDb();
+      const cached = db && await readCachedIdentity(db);
+      if (!db || !cached?.business || !cached.device || !cached.lease) setError(cause.message);
+      else {
+        const rows = await db.catalogue.toArray();
+        const group = (key: string) => rows.filter((entry) => entry.group === key && !entry.row.archivedAt)
+          .map((entry) => entry.row);
+        setWorkspace({ items: group("item") as unknown as Item[], units: group("unit") as unknown as Unit[],
+          conversions: group("conversion") as unknown as Conversion[],
+          accounts: group("cash_account") as unknown as Account[],
+          devices: [{ id: cached.device.id, locationId: cached.device.locationId,
+            deviceName: cached.device.deviceName, numberPrefix: cached.device.numberPrefix }],
+          parties: group("party") as unknown as Workspace["parties"],
+          taxProfiles: group("tax_profile") as unknown as Workspace["taxProfiles"] });
+        setDeviceId(cached.device.id); setCachedWorkspace(true);
+      }
+    } }
     finally { if (!signal?.aborted) setLoading(false); }
-  }, [auth.selectedBusinessId]);
+  }, [auth.selectedBusinessId, localDb]);
   useEffect(() => { const controller = new AbortController(); void load(controller.signal); return () => controller.abort(); }, [load]);
+  useEffect(() => {
+    const db = localDb();
+    if (!db) return;
+    let active = true;
+    const sync = async () => {
+      if (navigator.onLine && auth.csrfToken) await pushQueuedSales(db, auth.csrfToken);
+      if (active) setQueueCount(await db.pending.where("state").equals("queued").count());
+    };
+    void sync();
+    const onResume = () => { void sync(); };
+    window.addEventListener("online", onResume);
+    document.addEventListener("visibilitychange", onResume);
+    return () => { active = false; window.removeEventListener("online", onResume);
+      document.removeEventListener("visibilitychange", onResume); };
+  }, [localDb, auth.csrfToken]);
   useEffect(() => {
     const draftId = params.get("draft");
     if (!draftId || busy) return;
@@ -135,6 +184,30 @@ export function LiveSalePage() {
     } catch (cause) { setError(`${cause instanceof Error ? cause.message : "Could not issue sale."} The saved attempt keeps its IDs; retry after checking your connection.`); }
     finally { setBusy(false); }
   }
+  async function issueOffline() {
+    if (!selectedDevice || !calculation || !payment || !cart.length || busy) return;
+    if (partyId || bankApplied !== "0" && bankApplied !== "0.00" ||
+      payment.receivable !== "0.00" || cashApplied === "0" || !cashAccount) {
+      setError("Offline issue requires a fully paid walk-in cash bill."); return;
+    }
+    const db = localDb();
+    if (!db || (await readCachedIdentity(db)).device?.id !== selectedDevice.id) {
+      setError("Enrol and update this device in Settings before offline billing."); return;
+    }
+    const payload: OfflineCashInput = { id: crypto.randomUUID(), commandId: crypto.randomUUID(),
+      deviceEnrollmentId: selectedDevice.id, locationId: selectedDevice.locationId,
+      partyId: null, businessDate: new Date().toISOString().slice(0, 10), documentDiscount,
+      lines: cart, payments: [{ id: crypto.randomUUID(), accountId: cashAccount, kind: "Cash",
+        applied: cashApplied, tendered: cashTendered, reference: null }] };
+    setBusy(true); setError("");
+    try {
+      const saved = await issueOfflineCashSale(db, payload);
+      setIssued({ id: saved.id, number: saved.number, total: calculation.total, paid: calculation.total,
+        due: "0.00", snapshot: saved.snapshot, local: true });
+      setQueueCount(await db.pending.where("state").equals("queued").count());
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not save bill on this device"); }
+    finally { setBusy(false); }
+  }
   function reset() {
     setCart([]); setPartyId(""); setDocumentDiscount("0"); setCashApplied("0"); setCashTendered("0");
     setBankApplied("0"); setBankReference(""); setPending(null); setIssued(null); setError("");
@@ -144,6 +217,11 @@ export function LiveSalePage() {
     <div className="page-heading sale-heading"><div><p className="eyebrow"><Link to="/sales">SALES</Link> / NEW SALE</p>
       <h1>New sale</h1><p>Search, review the cart and issue a saved invoice.</p></div>
       {issued && <button className="btn-secondary" onClick={reset}>New sale</button>}</div>
+    {cachedWorkspace && <p role="status">Using the last saved catalogue. Changes on other devices will appear after reconnecting.</p>}
+    {queueCount > 0 && <p role="status">{queueCount} issued bill(s) saved on this device and awaiting sync. <button className="btn-ghost" onClick={() => {
+      const db = localDb(); if (db && auth.csrfToken) void pushQueuedSales(db, auth.csrfToken).then(() =>
+        db.pending.where("state").equals("queued").count().then(setQueueCount));
+    }}>Retry sync</button></p>}
     {error && <p role="alert" className="live-error">{error} <button className="btn-ghost" onClick={() => void load()}>Refresh catalogue</button></p>}
     {loading ? <Panel>Loading billing workspace…</Panel> : !workspace ? <Panel>Billing is unavailable.</Panel> :
       <div className="live-billing-grid"><div className="live-billing-main">
@@ -181,8 +259,11 @@ export function LiveSalePage() {
         <div className="live-billing-totals"><span>Change</span><b>{payment?.change ?? "—"}</b><span>Remaining due</span><b>{payment?.receivable ?? "—"}</b></div>
         {!calculation && cart.length > 0 && <p className="live-error">Check quantity, price and discounts.</p>}
         {issued ? <div role="status"><b>Saved: {issued.number}</b><p>Total {issued.total} · Paid {issued.paid} · Due {issued.due}</p>
-          <Link className="btn-primary" to={`/sales?open=${issued.id}`}>Open receipt</Link></div> :
-          <button className="btn-primary" disabled={busy || !calculation || !payment || !selectedDevice || !cart.length || !money.test(cashApplied) || !money.test(bankApplied)} onClick={() => void issue()}>{busy ? "Saving…" : pending ? "Retry saved sale" : "Save & issue sale"}</button>}
+          {issued.local ? <p>Saved on this device; cloud acceptance is pending. Keep this browser's data until synced.</p> :
+            <Link className="btn-primary" to={`/sales?open=${issued.id}`}>Open receipt</Link>}</div> : <>
+          {!cachedWorkspace && <button className="btn-primary" disabled={busy || !calculation || !payment || !selectedDevice || !cart.length || !money.test(cashApplied) || !money.test(bankApplied)} onClick={() => void issue()}>{busy ? "Saving…" : pending ? "Retry saved sale" : "Save & issue sale"}</button>}
+          <button className="btn-secondary" disabled={busy || !!pending || !calculation || !payment || !selectedDevice || !cart.length || !cashAccount || !money.test(cashApplied) || !money.test(cashTendered)} onClick={() => void issueOffline()}>Save offline cash bill</button>
+        </>}
         <p className="muted">Bank references are recorded manually. Only a saved invoice receives a number.</p>
       </Panel></div>}
   </div>;

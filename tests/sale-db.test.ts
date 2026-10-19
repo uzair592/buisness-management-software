@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { createApp } from "../apps/api/src/app";
 import { createDatabase, Prisma, withTenantContext } from "../packages/db/src/index";
+import { calculateDocument, allocatePayment } from "../packages/domain/src/index";
 
 test("M05 online sale persists number, exact split, stock, journal and replay once", async (t) => {
   const adminUrl = process.env.DATABASE_URL ?? "postgresql://bms_local:bms_local@127.0.0.1:5432/bms";
@@ -145,4 +146,44 @@ test("M05 online sale persists number, exact split, stock, journal and replay on
   assert.equal(rollback.receiptCount, 0);
   assert.equal(rollback.eventCount, 0);
   assert.equal(rollback.device.saleSequence.toString(), "2");
+
+  const bootstrap = await send(owner, "GET", `/v1/sync/bootstrap?deviceEnrollmentId=${device.json().id}`);
+  assert.equal(bootstrap.statusCode, 200, bootstrap.body);
+  const lease = bootstrap.json().lease;
+  const offlineLine = { id: crypto.randomUUID(), itemId: goods.json().id, conversionId: null,
+    taxProfileId: tax.json().id, quantity: "100", unitPrice: "10.00", discount: "0" };
+  const offlineSale = { id: crypto.randomUUID(), commandId: crypto.randomUUID(),
+    deviceEnrollmentId: device.json().id, locationId: location, partyId: null,
+    businessDate: "2026-10-18", documentDiscount: "0", lines: [offlineLine], payments: [
+      { id: crypto.randomUUID(), accountId: cash.json().id, kind: "Cash", applied: "1100.00", tendered: "1100.00", reference: null },
+    ] };
+  const calculation = calculateDocument({ documentDiscount: "0", lines: [{ id: offlineLine.id,
+    quantity: "100", conversion: "1", conversionVersion: 1, unitPrice: "10.00",
+    lineDiscount: { kind: "amount", value: "0" }, tax: { mode: "exclusive", percent: "10" } }] });
+  const issued = { schemaVersion: 1, calculationVersion: 1, datasetEpoch: 1,
+    policyVersion: lease.policyVersion, leaseId: lease.id, issuedAt: new Date().toISOString(),
+    number: `${device.json().numberPrefix}-O-000001`, input: offlineSale,
+    frozen: { calculation, payment: allocatePayment({ total: calculation.total, cashApplied: "1100.00",
+      bankApplied: "0", cashTendered: "1100.00" }), lines: [
+      { name: "Bottle", kind: "Goods", conversion: "1", tax: { mode: "exclusive", percent: "10" } },
+    ] } };
+  const push = () => send(owner, "POST", "/v1/sync/push/sale", issued);
+  const accepted = await push();
+  assert.equal(accepted.statusCode, 200, accepted.body);
+  assert.equal(accepted.json().sale.number, issued.number);
+  assert.equal((await push()).json().sale.number, issued.number, "lost acknowledgement replays original receipt");
+  assert.equal((await send(owner, "POST", "/v1/sync/push/sale", { ...issued,
+    number: `${device.json().numberPrefix}-O-999999` })).statusCode, 409);
+  assert.equal((await send(other, "POST", "/v1/sync/push/sale", issued)).statusCode, 409);
+  const offlineEffects = await withTenantContext(db, { businessId: owner.id }, async (tx) => ({
+    sale: await tx.saleDocument.findUniqueOrThrow({ where: { id: offlineSale.id } }),
+    receiptCount: await tx.commandReceipt.count({ where: { businessId: owner.id, commandId: offlineSale.commandId } }),
+    stock: await tx.stockMovement.findFirstOrThrow({ where: { businessId: owner.id, sourceLineId: offlineLine.id } }),
+    journalCount: await tx.journalEntry.count({ where: { businessId: owner.id, sourceEvent: { commandId: offlineSale.commandId } } }),
+  }));
+  assert.equal(offlineEffects.sale.status, "Posted");
+  assert.equal(offlineEffects.receiptCount, 1);
+  assert.equal(offlineEffects.journalCount, 1);
+  assert.equal(offlineEffects.stock.quantityDelta.toString(), "-100");
+  assert.equal(offlineEffects.stock.valuationStatus, "Provisional");
 });

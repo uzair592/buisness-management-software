@@ -14,6 +14,15 @@ export const saleInput = z.object({
     applied: money, tendered: money.nullable(), reference: z.string().trim().min(1).max(120).nullable() }).strict()).max(5),
 }).strict();
 export type SaleInput = z.infer<typeof saleInput>;
+export const offlineSaleInput = z.object({
+  schemaVersion: z.literal(1), calculationVersion: z.literal(1), datasetEpoch: z.number().int().positive(),
+  policyVersion: z.number().int().positive(), leaseId: z.uuid(), issuedAt: z.iso.datetime(),
+  number: z.string().min(1).max(40), input: saleInput,
+  frozen: z.object({ calculation: z.unknown(), payment: z.unknown(),
+    lines: z.array(z.object({ name: z.string(), kind: z.string(), conversion: z.string(),
+      tax: z.object({ mode: z.enum(["inclusive", "exclusive"]), percent: z.string() }).strict() }).strict()) }).strict(),
+}).strict();
+export type OfflineSaleInput = z.infer<typeof offlineSaleInput>;
 export class SaleConflict extends Error {}
 
 function decimal(value: string, scale: number): bigint {
@@ -56,16 +65,25 @@ export async function createSaleDraft(db: PrismaClient, businessId: string, user
   });
 }
 
-export async function postSale(db: PrismaClient, businessId: string, userId: string, input: { id: string; commandId: string }) {
+export async function postSale(db: PrismaClient, businessId: string, userId: string,
+  input: { id: string; commandId: string }, offline?: OfflineSaleInput) {
   const prepared = await withTenantContext(db, { businessId, userId }, async (tx) => {
     const draft = await tx.saleDocument.findFirst({ where: { id: input.id, commandId: input.commandId, businessId } });
     if (!draft) throw new SaleConflict("Saved draft not found");
-    if (draft.status === "Posted") return { posted: draft } as const;
+    if (draft.status === "Posted") {
+      if (offline && stableJson((draft.snapshot as { offline?: unknown }).offline) !== stableJson(offline))
+        throw new SaleConflict("Issued command identity has different content");
+      return { posted: draft } as const;
+    }
     const data = saleInput.parse(draft.snapshot);
+    if (offline && stableJson(data) !== stableJson(offline.input)) throw new SaleConflict("Issued bill differs from saved command");
     const business = await tx.business.findUniqueOrThrow({ where: { id: businessId } });
     const head = await tx.syncHead.findUniqueOrThrow({ where: { businessId } });
     const device = await tx.deviceEnrollment.findFirst({ where: { id: data.deviceEnrollmentId, businessId, status: "Enrolled" } });
     if (!device || device.locationId !== data.locationId) throw new SaleConflict("Device or location is no longer active");
+    if (offline && (!offline.number.startsWith(`${device.numberPrefix}-O-`) ||
+      !/^\d{6,}$/.test(offline.number.slice(device.numberPrefix.length + 3))))
+      throw new SaleConflict("Issued number does not belong to this device");
     const items = await tx.item.findMany({ where: { businessId, id: { in: data.lines.map((line) => line.itemId) }, archivedAt: null } });
     const accounts = await tx.account.findMany({ where: { businessId, archivedAt: null } });
     const party = data.partyId ? await tx.party.findFirst({ where: { id: data.partyId, businessId, isCustomer: true, archivedAt: null } }) : null;
@@ -80,13 +98,22 @@ export async function postSale(db: PrismaClient, businessId: string, userId: str
     const byTax = new Map(taxes.map((tax) => [tax.id, tax]));
     const conversions = await tx.itemUnitConversion.findMany({ where: { businessId, id: { in: data.lines.map((line) => line.conversionId).filter((id): id is string => !!id) }, archivedAt: null } });
     const byConversion = new Map(conversions.map((conversion) => [conversion.id, conversion]));
-    const calculationLines = data.lines.map((line) => {
+    if (offline && (offline.frozen.lines.length !== data.lines.length || data.partyId !== null ||
+      data.payments.length !== 1 || data.payments[0].kind !== "Cash"))
+      throw new SaleConflict("Offline issue supports a fully paid walk-in cash bill");
+    const calculationLines = data.lines.map((line, index) => {
       const item = byItem.get(line.itemId);
       if (!item) throw new SaleConflict("An item is missing or archived");
       const conversion = line.conversionId ? byConversion.get(line.conversionId) : null;
       if (line.conversionId && (!conversion || conversion.itemId !== item.id || item.kind !== "Goods")) throw new SaleConflict("Invalid item unit");
       const tax = line.taxProfileId ? byTax.get(line.taxProfileId) : null;
       if (line.taxProfileId && (!tax || tax.archivedAt)) throw new SaleConflict("Tax profile is missing or archived");
+      const frozen = offline?.frozen.lines[index];
+      if (frozen && (frozen.name !== item.name || frozen.kind !== item.kind ||
+        frozen.conversion !== (conversion?.factor.toString() ?? "1") ||
+        frozen.tax.mode !== (tax?.mode.toLowerCase() ?? "exclusive") ||
+        frozen.tax.percent !== (tax?.rate.toString() ?? "0")))
+        throw new SaleConflict("Catalogue changed since offline issue; hold for review");
       return { id: line.id, quantity: line.quantity, conversion: conversion?.factor.toString() ?? "1",
         conversionVersion: conversion?.version ?? 1, unitPrice: line.unitPrice,
         lineDiscount: { kind: "amount" as const, value: line.discount },
@@ -95,6 +122,8 @@ export async function postSale(db: PrismaClient, businessId: string, userId: str
     if (new Set(data.lines.map((line) => line.id)).size !== data.lines.length ||
       new Set(data.payments.map((payment) => payment.id)).size !== data.payments.length) throw new SaleConflict("Duplicate line or payment ID");
     const calculated = calculateDocument({ lines: calculationLines, documentDiscount: data.documentDiscount });
+    if (offline && stableJson(offline.frozen.calculation) !== stableJson(calculated))
+      throw new SaleConflict("Frozen offline calculation does not match the issued bill");
     if (decimal(calculated.total, 2) === 0n) throw new SaleConflict("Sale total must be greater than zero");
     let cash = 0n, bank = 0n, tender = 0n;
     for (const payment of data.payments) {
@@ -110,6 +139,9 @@ export async function postSale(db: PrismaClient, businessId: string, userId: str
     }
     const allocation = allocatePayment({ total: calculated.total, cashApplied: render(cash, 2),
       bankApplied: render(bank, 2), cashTendered: render(tender, 2) });
+    if (offline && (allocation.receivable !== "0.00" || bank !== 0n ||
+      stableJson(offline.frozen.payment) !== stableJson(allocation)))
+      throw new SaleConflict("Frozen cash payment does not match the issued bill");
     if (decimal(allocation.receivable, 2) > 0n && !party) throw new SaleConflict("Choose a customer for a sale with remaining credit");
     const stockEffects: NonNullable<PostingCommand["stockEffects"]>[number][] = [];
     let costTotal = 0n;
@@ -125,12 +157,16 @@ export async function postSale(db: PrismaClient, businessId: string, userId: str
         balances.set(item.id, balance);
       }
       const sold = decimal(calculated.lines[index].quantityBase, 6);
-      if (balance.quantity < sold || balance.quantity <= 0n || balance.value < 0n) throw new SaleConflict("Insufficient valued stock; resolve opening or purchase before sale");
-      const cost = sold === balance.quantity ? balance.value : (balance.value * sold * 2n + balance.quantity) / (2n * balance.quantity);
+      if (!offline && (balance.quantity < sold || balance.quantity <= 0n || balance.value < 0n))
+        throw new SaleConflict("Insufficient valued stock; resolve opening or purchase before sale");
+      if (balance.value < 0n) throw new SaleConflict("Negative stock value requires review");
+      const valued = offline && sold > balance.quantity ? (balance.quantity > 0n ? balance.quantity : 0n) : sold;
+      const cost = valued === 0n ? 0n : valued === balance.quantity ? balance.value :
+        (balance.value * valued * 2n + balance.quantity) / (2n * balance.quantity);
       balance.quantity -= sold; balance.value -= cost; costTotal += cost;
       stockEffects.push({ id: stableId(`${data.commandId}:stock:${line.id}`), itemId: item.id, sourceLineId: line.id,
         locationId: data.locationId, movementKind: "sale", leg: "out", quantityDelta: `-${calculated.lines[index].quantityBase}`,
-        valueDelta: `-${render(cost, 2)}`, valuationStatus: "Resolved" });
+        valueDelta: `-${render(cost, 2)}`, valuationStatus: valued < sold ? "Provisional" : "Resolved" });
     }
     const journalLines: PostingCommand["lines"][number][] = [];
     const debit = (key: string, accountId: string, amount: string) => { if (decimal(amount, 2)) journalLines.push({ id: stableId(`${data.commandId}:${key}`), accountId, debit: amount, credit: "0" }); };
@@ -149,7 +185,7 @@ export async function postSale(db: PrismaClient, businessId: string, userId: str
       journalEntryId: stableId(`${data.commandId}:journal`), datasetEpoch: business.datasetEpoch,
       schemaVersion: 1, calculationVersion: 1, businessDate: data.businessDate, effectKind: "sale",
       postingKind: "sale.invoice", lines: journalLines, stockEffects,
-      metadata: { documentId: data.id, input: data, calculated } };
+      metadata: { documentId: data.id, input: data, calculated, ...(offline ? { offline } : {}) } };
     const units = await tx.unit.findMany({ where: { businessId } });
     const byUnit = new Map(units.map((unit) => [unit.id, unit.name]));
     const itemSnapshots = data.lines.map((line, index) => {
@@ -166,13 +202,26 @@ export async function postSale(db: PrismaClient, businessId: string, userId: str
   await postCommand(db, prepared.command, {
     beforePosting: async (tx, cursor) => {
       if (cursor.toString() !== prepared.expectedCursor) throw new SaleConflict("Business changed since calculation; retry the saved draft");
+      if (offline) {
+        const lease = await tx.offlineLease.findFirst({ where: { id: offline.leaseId, businessId,
+          deviceEnrollmentId: prepared.device.id, datasetEpoch: offline.datasetEpoch,
+          policyVersion: offline.policyVersion, revokedAt: null } });
+        const membership = await tx.membership.findFirst({ where: { id: prepared.device.membershipId, businessId } });
+        if (!lease || !membership || membership.permissionVersion !== offline.policyVersion ||
+          Date.parse(offline.issuedAt) >= lease.expiresAt.getTime() ||
+          Date.parse(offline.issuedAt) < lease.issuedAt.getTime() - 5 * 60_000)
+          throw new SaleConflict("Offline authority changed; hold issued receipt for review");
+      }
       const draft = await tx.saleDocument.findFirst({ where: { id: input.id, businessId, status: "Draft", version: prepared.draft.version } });
       if (!draft) throw new SaleConflict("Draft changed while posting");
     },
     beforeCommit: async (tx) => {
-      const device = await tx.deviceEnrollment.update({ where: { id: prepared.device.id }, data: { saleSequence: { increment: 1 } } });
-      const number = `${device.numberPrefix}-${device.saleSequence.toString().padStart(6, "0")}`;
+      const number = offline ? offline.number : await (async () => {
+        const device = await tx.deviceEnrollment.update({ where: { id: prepared.device.id }, data: { saleSequence: { increment: 1 } } });
+        return `${device.numberPrefix}-${device.saleSequence.toString().padStart(6, "0")}`;
+      })();
       const snapshot = { input: prepared.data, calculation: prepared.calculated, cost: prepared.costTotal,
+        ...(offline ? { offline } : {}),
         number, businessName: prepared.businessName, partyName: prepared.party?.name ?? "Walk-in", lines: prepared.data.lines.map((line, index) => ({
           ...line, ...prepared.itemSnapshots[index], calculated: prepared.calculated.lines[index] })),
         payment: prepared.allocation };

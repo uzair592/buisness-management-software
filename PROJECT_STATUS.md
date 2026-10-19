@@ -1,6 +1,6 @@
 # Project status
 
-Last planning update: 2026-10-18.
+Last planning update: 2026-10-19.
 
 | Milestone | Status | Evidence |
 | --- | --- | --- |
@@ -11,7 +11,7 @@ Last planning update: 2026-10-18.
 | M03 Domain and journal | Foundation on main; remaining acceptance open | PR #7 restored the posting foundation and PR #8 serialized device configuration writes with posting cursors; full domain acceptance remains open. |
 | M04 Catalogue and opening balances | In progress | PR #9 and #10 merged. PR #10 added account setup, role-filtered catalogue bootstrap/pull, previewed one-time opening and a provisional-party ordering contract. The current M04 follow-up adds paged opening choices and category/tax/conversion setup UI; provisional-party server acceptance and full M04 gate remain open. |
 | M05 First sale | In review, PR #12; repaired head passed CI | Online billing and atomic journal/stock/payment path; [CI on the opening-form race repair](https://github.com/uzair592/buisness-management-software/actions/runs/39158053639) passed all gates. |
-| M06 Offline and two-device sync | Initial sync increment in draft PR #13 | Public app-shell caching, scoped catalogue and posted sale summaries, atomic pull cursor with pending-store preservation; no offline invoice issue or convergence claim. |
+| M06 Offline and two-device sync | In progress, draft PR #13 | App shell and scoped catalogue sync; local atomic cash issue/outbox, guarded push and provisional deficit intake under review. Full two-device and recovery gate remains open. |
 | M07 Purchases and money | Not started | — |
 | M08 Returns and inventory lifecycle | Not started | — |
 | M09 Reports and reconciliation | Not started | — |
@@ -23,13 +23,20 @@ Last planning update: 2026-10-18.
 
 ## Next action
 
-PR #11 merged at `bb5f96506acafcf02981adb6a73dc233d856ca62`. PR #12's opening-form race was repaired and CI passed; review M05 accounting before merging. Complete M06 offline issue, server intake and T05–T12 two-device proof before M07 or M08. M04 large setup choices and M03 valuation fixtures remain tracked.
+PR #11 merged at `bb5f96506acafcf02981adb6a73dc233d856ca62`. PR #12's opening-form race was repaired and CI passed; review M05 accounting before merging. Verify M06 offline issue against real PostgreSQL and two independent browser contexts; finish T05–T12, review/recovery and convergence before M07 or M08. M04 large setup choices and M03 valuation fixtures remain tracked.
+
+## M06 offline issue increment (draft PR #13, CI pending)
+
+- IndexedDB v3 adds immutable issued receipts and a pending command queue. The permitted catalogue read, lease and clock checks, frozen exact calculation, offline number allocation, receipt and outbox commit in one local transaction. Two-tab number and abort/expiry tests pass locally. A cached enrolled session can reopen billing during network loss; the foreground queue retries after reconnect.
+- The versioned cash sale intake checks tenant, device, signed lease, current permission/epoch and original issue time; recalculates frozen amounts; uses the posting transaction for a unique receipt, journal, stock, audit and cursor. Shortage posts provisional quantity/cost rather than rejecting an independently issued sale. Stale catalogue and changed authority hold the issued record for review.
+- Cashier bootstrap/pull downloads only cash account identity needed for a local payment; private ledger fields remain filtered. No PostgreSQL migration; the local Dexie v3 upgrade is additive.
+- Local `corepack pnpm lint`, `corepack pnpm typecheck`, `corepack pnpm build` and equivalent `node --import tsx --test` (18 unit tests) passed. Real database and browser cases were added but have not run in this workspace. The full M06 gate is **not** passed: two-context convergence, permission and epoch conflict handling, recovery export, cursor expiration/resnapshot and remaining T05–T12 cases still need proof. M07 and M08 have not started.
 
 ## M06 initial local sync increment (branch `milestone-06-offline-sync`)
 
 - Based on the unmerged M05 draft head `6665191215247e2b32e8719dde4e9a4a355bed4d`; this is a dependent review branch, not a merge or deployment.
 - Adds version 2 Dexie catalogue and reserved pending stores. Full permitted catalogue replacement commits with its cursor in one transaction. Pull validates epoch, cursor range and data scope, and applies changes with cursor advancement atomically. A resnapshot keeps pending records. Settings can manually update the catalogue; cashier accounts stay out of the local store. Bootstrap and pull include location-scoped posted sale summaries, without private receipt snapshots or costs.
-- Production-only service worker caches public application assets and an install manifest; it never caches authenticated `/v1/` responses. Offline billing remains disabled.
+- Production-only service worker caches public application assets and an install manifest; it never caches authenticated `/v1/` responses. Offline billing was disabled in this initial increment.
 - Local `corepack pnpm db:generate` passed. Lint, all typechecks and both builds passed. `corepack pnpm check` reached tests but its `tsx` CLI IPC socket could not bind (`EPERM` here). Equivalent `node --import tsx --test` passed 16 unit tests including interrupted pull and pending preservation. [CI on implementation head `f0c65ed`](https://github.com/uzair592/buisness-management-software/actions/runs/39158551672) passed frozen install, migration, 16 unit tests, 9 real PostgreSQL tests, compiled runtime test and 16 browser tests. This verifies the current increment, not the complete offline gate.
 - No PostgreSQL migration. The additive IndexedDB v2 migration retains version 1 records. No issued invoice or outbox upload is created by this increment; M06 gate remains open.
 
