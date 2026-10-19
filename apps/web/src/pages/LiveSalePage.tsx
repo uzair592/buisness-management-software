@@ -102,6 +102,7 @@ export function LiveSalePage() {
       syncing = true;
       try {
         if (navigator.onLine && auth.csrfToken) {
+          await pullCatalogueChanges(db);
           await pushQueuedSales(db, auth.csrfToken);
           await pullCatalogueChanges(db);
         }

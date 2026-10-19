@@ -65,7 +65,7 @@ test("M06 two browser profiles issue the last item offline and converge after re
   } finally { await otherContext.close(); }
 });
 
-test("M06 cached cash bill survives an offline browser reopen and syncs its original number", async ({ page }) => {
+test("M06 cached cash bill survives an offline browser reopen and syncs its original number", async ({ page }, testInfo) => {
   const suffix = crypto.randomUUID().slice(0, 8);
   const register = await page.request.post("/v1/auth/register", { data: { username: `offline_${suffix}`,
     password: "CorrectBatteryHorse123!", fullName: "Owner", businessName: `Offline ${suffix}` } });
@@ -105,8 +105,10 @@ test("M06 cached cash bill survives an offline browser reopen and syncs its orig
   await page.getByRole("button", { name: "Save offline cash bill" }).click();
   await expect(page.getByText(/Saved: D\d+-O-000001/)).toBeVisible();
   await expect(page.getByText(/cloud acceptance is pending/)).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("offline-saved-bill.png"), fullPage: true });
   await page.reload();
   await expect(page.getByText(/1 issued bill\(s\) saved on this device/)).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("offline-reopened-queue.png"), fullPage: true });
   await page.context().setOffline(false);
   await page.evaluate(() => window.dispatchEvent(new Event("online")));
   await expect(page.getByText(/1 issued bill\(s\) saved on this device/)).toHaveCount(0, { timeout: 30000 });

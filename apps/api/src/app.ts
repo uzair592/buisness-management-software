@@ -1010,6 +1010,8 @@ export function createApp(
       if (after > committedCursor) return { invalidCursor: true };
       const batches = await tx.changeBatch.findMany({ where: { businessId: tenant.businessId,
         datasetEpoch: epoch, cursor: { gt: after } }, orderBy: { cursor: "asc" }, take: limit });
+      if (after < committedCursor && (!batches.length || batches[0].cursor !== after + 1n))
+        return { expiredCursor: true, committedCursor: committedCursor.toString() };
       const privileged = ["Owner", "Accountant"].includes(tenant.membership.role);
       const changes = [];
       for (const batch of batches) {
@@ -1071,6 +1073,8 @@ export function createApp(
     });
     if (!result) return reply.code(403).send({ error: "Device is not enrolled for this membership" });
     if ("invalidCursor" in result) return reply.code(400).send({ error: "Cursor is ahead of this business" });
+    if ("expiredCursor" in result) return reply.code(410).send({ error: "Sync history is no longer continuous; resnapshot this device and preserve pending work",
+      code: "CURSOR_EXPIRED", committedCursor: result.committedCursor });
     return result;
   });
 

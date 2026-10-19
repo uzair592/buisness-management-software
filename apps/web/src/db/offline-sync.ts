@@ -48,6 +48,7 @@ export async function pullCatalogueChanges(db: PartitionedLocalDatabase) {
     if (!/^\d+$/.test(cursor)) throw new Error("Catalogue cursor is missing; update the snapshot");
     const response = await fetch(`/v1/sync/pull?deviceEnrollmentId=${encodeURIComponent(device.id)}&afterCursor=${cursor}&limit=100`,
       { credentials: "include" });
+    if (response.status === 410) throw new Error("Sync history expired. Update the catalogue in Settings; issued bills remain saved on this device.");
     if (!response.ok) throw new Error(`Catalogue pull needs review (${response.status})`);
     const pull = await response.json() as CataloguePull & { hasMore: boolean };
     await applyCataloguePull(db, pull, privileged);
