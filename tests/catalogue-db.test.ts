@@ -133,7 +133,9 @@ test("M04 catalogue persists, isolates tenants, enforces versions and sellable r
   assert.equal(cashierBootstrap.statusCode, 200, cashierBootstrap.body);
   assert.equal(cashierBootstrap.json().catalogue.accountSetup, null);
   assert.ok(cashierBootstrap.json().catalogue.items.some((row: { id: string }) => row.id === item.json().id));
-  assert.ok(!/CASH|Electricity|expenseCategory|classification|cost|profit/i.test(JSON.stringify(cashierBootstrap.json().catalogue)));
+  assert.ok(!/Electricity|expenseCategory|classification|cost|profit/i.test(JSON.stringify(cashierBootstrap.json().catalogue)));
+  assert.ok(cashierBootstrap.json().catalogue.cashAccounts.every((row: Record<string, unknown>) =>
+    Object.keys(row).every((key) => ["id", "name", "kind"].includes(key)) && row.kind === "Cash"));
 
   const provisional = { commandId: crypto.randomUUID(), provisionalPartyId: crypto.randomUUID(),
     deviceEnrollmentId: cashierDeviceId, datasetEpoch: cashierBootstrap.json().business.datasetEpoch,

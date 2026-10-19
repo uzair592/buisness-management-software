@@ -3,6 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { PartitionedLocalDatabase, bootstrapLocalIdentity, installCatalogueSnapshot } from "../apps/web/src/db/index";
 import { issueOfflineCashSale, type OfflineCashInput } from "../apps/web/src/db/offline-sale";
+import { exportPendingRecovery } from "../apps/web/src/db/recovery";
 import type { IdentityBootstrap } from "../packages/contracts/src/index";
 
 const id = () => crypto.randomUUID();
@@ -67,5 +68,27 @@ test("aborted storage transaction and expired lease never display a saved number
     await db.lease.update(lease!.id, { expiresAt: new Date(Date.now() - 1000).toISOString() });
     await assert.rejects(issueOfflineCashSale(db, sale()), /Offline authority/);
     assert.equal(await db.issuedSales.count(), 0);
+  } finally { db.close(); await db.delete(); }
+});
+
+test("recovery export encrypts pending receipt and rejects the wrong passphrase", async () => {
+  const db = await setup(`issue-${id()}`);
+  try {
+    const saved = await issueOfflineCashSale(db, sale());
+    const encrypted = await exportPendingRecovery(db, "a sufficiently long passphrase");
+    assert.ok(!encrypted.includes(saved.number));
+    assert.ok(!encrypted.includes("Bottle"));
+    const bundle = JSON.parse(encrypted) as { salt: string; iv: string; ciphertext: string; iterations: number };
+    const bytes = (value: string) => Uint8Array.from(atob(value), (char) => char.charCodeAt(0));
+    const derive = async (passphrase: string) => crypto.subtle.deriveKey({ name: "PBKDF2",
+      salt: bytes(bundle.salt), iterations: bundle.iterations, hash: "SHA-256" },
+      await crypto.subtle.importKey("raw", new TextEncoder().encode(passphrase), "PBKDF2", false, ["deriveKey"]),
+      { name: "AES-GCM", length: 256 }, false, ["decrypt"]);
+    const decrypt = async (passphrase: string) => crypto.subtle.decrypt({ name: "AES-GCM", iv: bytes(bundle.iv) },
+      await derive(passphrase), bytes(bundle.ciphertext));
+    await assert.rejects(decrypt("wrong long passphrase"));
+    const recovered = JSON.parse(new TextDecoder().decode(await decrypt("a sufficiently long passphrase")));
+    assert.equal(recovered.pending[0].commandId, saved.commandId);
+    assert.equal(recovered.issuedSales[0].number, saved.number);
   } finally { db.close(); await db.delete(); }
 });

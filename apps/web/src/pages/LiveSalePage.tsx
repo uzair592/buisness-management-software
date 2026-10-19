@@ -4,9 +4,10 @@ import { useSearchParams } from "react-router-dom";
 import { allocatePayment, calculateDocument } from "@business/domain";
 import { Panel } from "@business/ui";
 import { useAuth } from "../context/AuthContext";
-import { getLocalDatabase, readCachedIdentity } from "../db/index";
+import { getLocalDatabase, readCachedIdentity, type LocalPendingRecord } from "../db/index";
 import { issueOfflineCashSale, type OfflineCashInput } from "../db/offline-sale";
 import { pushQueuedSales } from "../db/offline-sync";
+import { exportPendingRecovery } from "../db/recovery";
 
 type Item = { id: string; name: string; kind: "Goods" | "Service"; barcode: string | null;
   salePrice: string; baseUnitId: string | null; taxProfileId: string | null };
@@ -48,6 +49,8 @@ export function LiveSalePage() {
   const [issued, setIssued] = useState<SavedSale | null>(null);
   const [cachedWorkspace, setCachedWorkspace] = useState(false);
   const [queueCount, setQueueCount] = useState(0);
+  const [queueRows, setQueueRows] = useState<LocalPendingRecord[]>([]);
+  const [recoveryPassphrase, setRecoveryPassphrase] = useState("");
   const localDb = useCallback(() => {
     if (!auth.user || !auth.selectedBusinessId) return null;
     const bound = localStorage.getItem(`bms_device_binding_${auth.selectedBusinessId}`);
@@ -95,7 +98,10 @@ export function LiveSalePage() {
     let active = true;
     const sync = async () => {
       if (navigator.onLine && auth.csrfToken) await pushQueuedSales(db, auth.csrfToken);
-      if (active) setQueueCount(await db.pending.where("state").equals("queued").count());
+      if (active) {
+        setQueueCount(await db.pending.where("state").equals("queued").count());
+        setQueueRows(await db.pending.where("state").anyOf("queued", "held", "blocked").toArray());
+      }
     };
     void sync();
     const onResume = () => { void sync(); };
@@ -205,8 +211,22 @@ export function LiveSalePage() {
       setIssued({ id: saved.id, number: saved.number, total: calculation.total, paid: calculation.total,
         due: "0.00", snapshot: saved.snapshot, local: true });
       setQueueCount(await db.pending.where("state").equals("queued").count());
+      setQueueRows(await db.pending.where("state").anyOf("queued", "held", "blocked").toArray());
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not save bill on this device"); }
     finally { setBusy(false); }
+  }
+  async function downloadRecovery() {
+    const db = localDb();
+    if (!db) return;
+    try {
+      const bundle = await exportPendingRecovery(db, recoveryPassphrase);
+      const url = URL.createObjectURL(new Blob([bundle], { type: "application/json" }));
+      const link = document.createElement("a");
+      link.href = url; link.download = `bms-pending-recovery-${new Date().toISOString().slice(0, 10)}.json`;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 30_000);
+      setRecoveryPassphrase("");
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Recovery export failed"); }
   }
   function reset() {
     setCart([]); setPartyId(""); setDocumentDiscount("0"); setCashApplied("0"); setCashTendered("0");
@@ -218,10 +238,24 @@ export function LiveSalePage() {
       <h1>New sale</h1><p>Search, review the cart and issue a saved invoice.</p></div>
       {issued && <button className="btn-secondary" onClick={reset}>New sale</button>}</div>
     {cachedWorkspace && <p role="status">Using the last saved catalogue. Changes on other devices will appear after reconnecting.</p>}
-    {queueCount > 0 && <p role="status">{queueCount} issued bill(s) saved on this device and awaiting sync. <button className="btn-ghost" onClick={() => {
-      const db = localDb(); if (db && auth.csrfToken) void pushQueuedSales(db, auth.csrfToken).then(() =>
-        db.pending.where("state").equals("queued").count().then(setQueueCount));
-    }}>Retry sync</button></p>}
+    {queueRows.length > 0 && <section aria-label="Device issue queue" className="live-issue-queue">
+      <p role="status">{queueCount} issued bill(s) saved on this device and awaiting sync.</p>
+      <ul>{queueRows.map((row) => {
+        const envelope = row.payload as { number?: string };
+        return <li key={row.commandId}><b>{envelope.number ?? row.commandId}</b> · {row.state}
+          {row.reason && <span> · {row.reason}</span>}</li>;
+      })}</ul>
+      <button className="btn-ghost" disabled={!auth.csrfToken} onClick={() => {
+        const db = localDb(); if (db && auth.csrfToken) void pushQueuedSales(db, auth.csrfToken).then(async () => {
+          setQueueCount(await db.pending.where("state").equals("queued").count());
+          setQueueRows(await db.pending.where("state").anyOf("queued", "held", "blocked").toArray());
+        });
+      }}>Retry sync</button>
+      <label>Recovery passphrase<input type="password" className="input" value={recoveryPassphrase}
+        onChange={(event) => setRecoveryPassphrase(event.target.value)} autoComplete="new-password" /></label>
+      <button className="btn-secondary" disabled={recoveryPassphrase.length < 12}
+        onClick={() => void downloadRecovery()}>Download encrypted recovery</button>
+    </section>}
     {error && <p role="alert" className="live-error">{error} <button className="btn-ghost" onClick={() => void load()}>Refresh catalogue</button></p>}
     {loading ? <Panel>Loading billing workspace…</Panel> : !workspace ? <Panel>Billing is unavailable.</Panel> :
       <div className="live-billing-grid"><div className="live-billing-main">
