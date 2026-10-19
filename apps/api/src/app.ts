@@ -1066,6 +1066,7 @@ export function createApp(
       }
       const nextCursor = (batches.at(-1)?.cursor ?? after).toString();
       return { datasetEpoch: epoch, fromCursor: afterCursor, nextCursor,
+        permissionVersion: tenant.membership.permissionVersion,
         committedCursor: committedCursor.toString(), hasMore: BigInt(nextCursor) < committedCursor, changes };
     });
     if (!result) return reply.code(403).send({ error: "Device is not enrolled for this membership" });
@@ -1172,8 +1173,12 @@ export function createApp(
       if (!sale) throw new SaleConflict("Concurrent posting needs a retry");
       return { commandId: issued.input.commandId, sale };
     } catch (error) {
+      if (error instanceof SaleConflict && error.message.startsWith("Business changed since calculation"))
+        return reply.code(503).send({ error: "Concurrent posting; retry the original issued command", code: "RETRY" });
       if (error instanceof SaleConflict || error instanceof ChangedCommandError)
         return reply.code(409).send({ error: error.message, code: "REVIEW" });
+      if (typeof error === "object" && error && "code" in error && error.code === "P2002")
+        return reply.code(409).send({ error: "Issued number or identity is already used; preserve for review", code: "NUMBER_CONFLICT" });
       throw error;
     }
   });

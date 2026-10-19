@@ -73,6 +73,7 @@ export interface CatalogueSnapshot {
 
 export interface CataloguePull {
   datasetEpoch: number;
+  permissionVersion?: number;
   fromCursor: string;
   nextCursor: string;
   changes: Array<{ cursor: string; action: string; row: Record<string, unknown> }>;
@@ -156,6 +157,9 @@ export async function applyCataloguePull(db: PartitionedLocalDatabase, pull: Cat
   permittedPrivateAccounts: boolean): Promise<void> {
   const business = (await db.identity.get("business"))?.value as IdentityBootstrap["business"] | undefined;
   if (!business || business.datasetEpoch !== pull.datasetEpoch) throw new Error("Dataset epoch changed; keep local work for review");
+  const membership = (await db.identity.get("membership"))?.value as IdentityBootstrap["membership"] | undefined;
+  if (pull.permissionVersion !== undefined && membership?.permissionVersion !== pull.permissionVersion)
+    throw new Error("Permission scope changed; keep pending work and refresh the restricted snapshot");
   const from = cursorValue(pull.fromCursor);
   const next = cursorValue(pull.nextCursor);
   if (next < from) throw new Error("Sync cursor moved backwards");

@@ -191,7 +191,10 @@ test("M04 catalogue persists, isolates tenants, enforces versions and sellable r
     cursor = page.json().nextCursor;
   }
   assert.ok(permitted.some((change) => change.action === "party.create" && change.row.id === pullParty.json().id));
-  assert.ok(!/PETTY|Petty cash|classification|expenseCategory/i.test(JSON.stringify(permitted)));
+  const cashierTill = permitted.find((change) => change.action === "account.create" && change.row.id === pullAccount.json().id);
+  assert.ok(cashierTill);
+  assert.ok(Object.keys(cashierTill.row).every((key) => ["id", "name", "kind", "archivedAt"].includes(key)));
+  assert.ok(!/classification|expenseCategory|cost|profit/i.test(JSON.stringify(permitted)));
   assert.equal((await send(b, "GET", `/v1/sync/pull?deviceEnrollmentId=${cashierDeviceId}&afterCursor=0`)).statusCode, 403);
 
   const reloaded = await send(a, "GET", "/v1/catalogue/items?q=Mineral&page=1");

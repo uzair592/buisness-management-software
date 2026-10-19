@@ -1,4 +1,4 @@
-import type { PartitionedLocalDatabase } from "./index";
+import { applyCataloguePull, type CataloguePull, type PartitionedLocalDatabase } from "./index";
 import type { OfflineSaleEnvelope } from "./offline-sale";
 
 /** Foreground delivery is at least once; the server receipt is the replay boundary. */
@@ -35,4 +35,23 @@ export async function pushQueuedSales(db: PartitionedLocalDatabase, csrfToken: s
     }
   }
   return summary;
+}
+
+/** Apply complete pages and their cursor together; rerunning an interrupted page is safe. */
+export async function pullCatalogueChanges(db: PartitionedLocalDatabase) {
+  const device = await db.device.toCollection().first();
+  const membership = (await db.identity.get("membership"))?.value as { role?: string } | undefined;
+  if (!device || !membership) throw new Error("Device bootstrap is missing");
+  const privileged = ["Owner", "Accountant"].includes(membership.role ?? "");
+  for (let page = 0; page < 100; page++) {
+    const cursor = String((await db.syncState.get("catalogueCursor"))?.value ?? "");
+    if (!/^\d+$/.test(cursor)) throw new Error("Catalogue cursor is missing; update the snapshot");
+    const response = await fetch(`/v1/sync/pull?deviceEnrollmentId=${encodeURIComponent(device.id)}&afterCursor=${cursor}&limit=100`,
+      { credentials: "include" });
+    if (!response.ok) throw new Error(`Catalogue pull needs review (${response.status})`);
+    const pull = await response.json() as CataloguePull & { hasMore: boolean };
+    await applyCataloguePull(db, pull, privileged);
+    if (!pull.hasMore) return pull.nextCursor;
+  }
+  throw new Error("Catalogue pull page limit reached; retry to continue");
 }

@@ -42,6 +42,9 @@ test("catalogue pull resumes after interruption, preserves pending work on resna
     await db.pending.put({ commandId: "local-issued", state: "held", payload: { number: "D01-000001" } });
     await installCatalogueSnapshot(db, snapshot(bootstrap.business), false);
     assert.equal((await db.syncState.get("catalogueCursor"))?.value, "4");
+    await assert.rejects(applyCataloguePull(db, { datasetEpoch: 1, permissionVersion: 2,
+      fromCursor: "4", nextCursor: "5", changes: [] }, false), /Permission scope changed/);
+    assert.equal((await db.syncState.get("catalogueCursor"))?.value, "4");
 
     // A transport failure before local application leaves both row and cursor intact.
     await assert.rejects(applyCataloguePull(db, { datasetEpoch: 1, fromCursor: "4", nextCursor: "6",

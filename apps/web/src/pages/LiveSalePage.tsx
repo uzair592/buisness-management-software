@@ -6,7 +6,7 @@ import { Panel } from "@business/ui";
 import { useAuth } from "../context/AuthContext";
 import { getLocalDatabase, readCachedIdentity, type LocalPendingRecord } from "../db/index";
 import { issueOfflineCashSale, type OfflineCashInput } from "../db/offline-sale";
-import { pushQueuedSales } from "../db/offline-sync";
+import { pushQueuedSales, pullCatalogueChanges } from "../db/offline-sync";
 import { exportPendingRecovery } from "../db/recovery";
 
 type Item = { id: string; name: string; kind: "Goods" | "Service"; barcode: string | null;
@@ -96,19 +96,30 @@ export function LiveSalePage() {
     const db = localDb();
     if (!db) return;
     let active = true;
+    let syncing = false;
     const sync = async () => {
-      if (navigator.onLine && auth.csrfToken) await pushQueuedSales(db, auth.csrfToken);
-      if (active) {
-        setQueueCount(await db.pending.where("state").equals("queued").count());
-        setQueueRows(await db.pending.where("state").anyOf("queued", "held", "blocked").toArray());
-      }
+      if (syncing || !active) return;
+      syncing = true;
+      try {
+        if (navigator.onLine && auth.csrfToken) {
+          await pushQueuedSales(db, auth.csrfToken);
+          await pullCatalogueChanges(db);
+        }
+        if (active) {
+          setQueueCount(await db.pending.where("state").equals("queued").count());
+          setQueueRows(await db.pending.where("state").anyOf("queued", "held", "blocked").toArray());
+        }
+      } catch (cause) {
+        if (active && navigator.onLine) setError(cause instanceof Error ? cause.message : "Sync needs review");
+      } finally { syncing = false; }
     };
     void sync();
     const onResume = () => { void sync(); };
     window.addEventListener("online", onResume);
     document.addEventListener("visibilitychange", onResume);
+    const timer = window.setInterval(() => { if (document.visibilityState === "visible") void sync(); }, 30_000 + Math.floor(Math.random() * 10_000));
     return () => { active = false; window.removeEventListener("online", onResume);
-      document.removeEventListener("visibilitychange", onResume); };
+      document.removeEventListener("visibilitychange", onResume); window.clearInterval(timer); };
   }, [localDb, auth.csrfToken]);
   useEffect(() => {
     const draftId = params.get("draft");
