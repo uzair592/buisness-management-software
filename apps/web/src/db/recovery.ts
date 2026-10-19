@@ -1,7 +1,38 @@
-import type { PartitionedLocalDatabase } from "./index";
+import Dexie from "dexie";
+import { PartitionedLocalDatabase } from "./index";
 
 const encoder = new TextEncoder();
 const iterations = 310_000;
+
+export interface PendingPartitionSummary {
+  name: string;
+  enrollmentId: string;
+  datasetEpoch: number;
+  count: number;
+}
+
+/** Find older epoch queues belonging to the current user and business. */
+export async function listPendingPartitions(userId: string, businessId: string): Promise<PendingPartitionSummary[]> {
+  const prefix = `bms_${userId}_${businessId}_`;
+  const names = await Dexie.getDatabaseNames();
+  const results: PendingPartitionSummary[] = [];
+  for (const name of names) {
+    if (!name.startsWith(prefix)) continue;
+    const match = /^(.+)_ep(\d+)$/.exec(name.slice(prefix.length));
+    if (!match) continue;
+    const db = new PartitionedLocalDatabase(name);
+    try {
+      const business = (await db.identity.get("business"))?.value as { id?: string; datasetEpoch?: number } | undefined;
+      const user = (await db.identity.get("user"))?.value as { id?: string } | undefined;
+      const device = await db.device.toCollection().first();
+      if (business?.id !== businessId || business.datasetEpoch !== Number(match[2]) || device?.id !== match[1] ||
+        user?.id !== userId) continue;
+      const count = await db.pending.where("state").anyOf("queued", "held", "blocked").count();
+      if (count) results.push({ name, enrollmentId: match[1], datasetEpoch: Number(match[2]), count });
+    } finally { db.close(); }
+  }
+  return results.sort((a, b) => a.datasetEpoch - b.datasetEpoch);
+}
 
 /** Encrypted evidence of outstanding issued work. No network request is involved. */
 export async function exportPendingRecovery(db: PartitionedLocalDatabase, passphrase: string) {

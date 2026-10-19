@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { PartitionedLocalDatabase, bootstrapLocalIdentity, installCatalogueSnapshot } from "../apps/web/src/db/index";
 import { issueOfflineCashSale, type OfflineCashInput } from "../apps/web/src/db/offline-sale";
-import { exportPendingRecovery } from "../apps/web/src/db/recovery";
+import { exportPendingRecovery, listPendingPartitions } from "../apps/web/src/db/recovery";
 import type { IdentityBootstrap } from "../packages/contracts/src/index";
 
 const id = () => crypto.randomUUID();
@@ -90,5 +90,17 @@ test("recovery export encrypts pending receipt and rejects the wrong passphrase"
     const recovered = JSON.parse(new TextDecoder().decode(await decrypt("a sufficiently long passphrase")));
     assert.equal(recovered.pending[0].commandId, saved.commandId);
     assert.equal(recovered.issuedSales[0].number, saved.number);
+  } finally { db.close(); await db.delete(); }
+});
+
+test("older epoch pending work stays discoverable only for its user and business", async () => {
+  const userId = id();
+  const db = await setup(`bms_${userId}_${businessId}_${deviceId}_ep1`);
+  try {
+    await db.identity.put({ key: "user", value: { id: userId } });
+    await issueOfflineCashSale(db, sale());
+    assert.equal((await listPendingPartitions(userId, businessId))[0]?.count, 1);
+    assert.deepEqual(await listPendingPartitions(id(), businessId), []);
+    assert.deepEqual(await listPendingPartitions(userId, id()), []);
   } finally { db.close(); await db.delete(); }
 });

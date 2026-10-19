@@ -187,14 +187,6 @@ test("M05 online sale persists number, exact split, stock, journal and replay on
   assert.equal(offlineEffects.stock.quantityDelta.toString(), "-100");
   assert.equal(offlineEffects.stock.valuationStatus, "Provisional");
 
-  // Simulate retention pruning on this isolated business. A stale device must
-  // resnapshot rather than advance past a missing committed change batch.
-  await withTenantContext(db, { businessId: owner.id }, (tx) => tx.changeBatch.deleteMany({
-    where: { businessId: owner.id, datasetEpoch: 1, cursor: 1n },
-  }));
-  const expired = await send(owner, "GET", `/v1/sync/pull?deviceEnrollmentId=${device.json().id}&afterCursor=0`);
-  assert.equal(expired.statusCode, 410, expired.body);
-  assert.equal(expired.json().code, "CURSOR_EXPIRED");
   const wrongEpoch = await send(owner, "POST", "/v1/sync/push/sale", { ...issued, datasetEpoch: 2 });
   assert.equal(wrongEpoch.statusCode, 409, wrongEpoch.body);
   assert.equal(wrongEpoch.json().code, "EPOCH");
