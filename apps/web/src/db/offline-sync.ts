@@ -51,8 +51,29 @@ export async function pullCatalogueChanges(db: PartitionedLocalDatabase) {
     if (response.status === 410) throw new Error("Sync history expired. Update the catalogue in Settings; issued bills remain saved on this device.");
     if (!response.ok) throw new Error(`Catalogue pull needs review (${response.status})`);
     const pull = await response.json() as CataloguePull & { hasMore: boolean };
-    await applyCataloguePull(db, pull, privileged);
+    try { await applyCataloguePull(db, pull, privileged); }
+    catch (cause) {
+      // Another tab or a previous in-flight cycle may have committed this page.
+      // Start again from the durable cursor; never rewind or overwrite its work.
+      const saved = String((await db.syncState.get("catalogueCursor"))?.value ?? "");
+      if (cause instanceof Error && cause.message === "Pull starts at a different saved cursor" &&
+        /^\d+$/.test(saved) && BigInt(saved) > BigInt(cursor)) continue;
+      throw cause;
+    }
     if (!pull.hasMore) return pull.nextCursor;
   }
   throw new Error("Catalogue pull page limit reached; retry to continue");
+}
+
+/** A tab leader reduces duplicate traffic; durable receipts remain the correctness boundary. */
+export async function syncOfflineSales(db: PartitionedLocalDatabase, csrfToken: string) {
+  const cycle = async () => {
+    await pullCatalogueChanges(db);
+    const result = await pushQueuedSales(db, csrfToken);
+    await pullCatalogueChanges(db);
+    return result;
+  };
+  if (!navigator.locks) return cycle();
+  return navigator.locks.request(`bms-sync-${db.name}`, { ifAvailable: true },
+    (lock) => lock ? cycle() : null);
 }

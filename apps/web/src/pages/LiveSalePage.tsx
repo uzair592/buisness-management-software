@@ -6,7 +6,7 @@ import { Panel } from "@business/ui";
 import { useAuth } from "../context/AuthContext";
 import { getLocalDatabase, readCachedIdentity, type LocalPendingRecord } from "../db/index";
 import { issueOfflineCashSale, type OfflineCashInput } from "../db/offline-sale";
-import { pushQueuedSales, pullCatalogueChanges } from "../db/offline-sync";
+import { syncOfflineSales } from "../db/offline-sync";
 import { exportPendingRecovery } from "../db/recovery";
 
 type Item = { id: string; name: string; kind: "Goods" | "Service"; barcode: string | null;
@@ -97,25 +97,32 @@ export function LiveSalePage() {
     if (!db) return;
     let active = true;
     let syncing = false;
-    const sync = async () => {
+    let failures = 0;
+    let nextAttemptAt = 0;
+    const sync = async (force = false) => {
       if (syncing || !active) return;
+      if (!force && Date.now() < nextAttemptAt) return;
       syncing = true;
       try {
         if (navigator.onLine && auth.csrfToken) {
-          await pullCatalogueChanges(db);
-          await pushQueuedSales(db, auth.csrfToken);
-          await pullCatalogueChanges(db);
+          const result = await syncOfflineSales(db, auth.csrfToken);
+          if (result?.remaining) throw new Error("Some issued bills are awaiting connection or server recovery.");
+          if (result) { failures = 0; nextAttemptAt = 0; }
         }
+      } catch (cause) {
+        failures++;
+        nextAttemptAt = Date.now() + Math.min(5 * 60_000, 1000 * 2 ** Math.min(failures, 8)) * (0.5 + Math.random());
+        if (active && navigator.onLine) setError(cause instanceof Error ? cause.message : "Sync needs review");
+      } finally {
         if (active) {
           setQueueCount(await db.pending.where("state").equals("queued").count());
           setQueueRows(await db.pending.where("state").anyOf("queued", "held", "blocked").toArray());
         }
-      } catch (cause) {
-        if (active && navigator.onLine) setError(cause instanceof Error ? cause.message : "Sync needs review");
-      } finally { syncing = false; }
+        syncing = false;
+      }
     };
     void sync();
-    const onResume = () => { void sync(); };
+    const onResume = () => { if (document.visibilityState === "visible") void sync(true); };
     window.addEventListener("online", onResume);
     document.addEventListener("visibilitychange", onResume);
     const timer = window.setInterval(() => { if (document.visibilityState === "visible") void sync(); }, 30_000 + Math.floor(Math.random() * 10_000));
@@ -258,10 +265,11 @@ export function LiveSalePage() {
           {row.reason && <span> · {row.reason}</span>}</li>;
       })}</ul>
       <button className="btn-ghost" disabled={!auth.csrfToken} onClick={() => {
-        const db = localDb(); if (db && auth.csrfToken) void pushQueuedSales(db, auth.csrfToken).then(async () => {
-          setQueueCount(await db.pending.where("state").equals("queued").count());
-          setQueueRows(await db.pending.where("state").anyOf("queued", "held", "blocked").toArray());
-        });
+        const db = localDb(); if (db && auth.csrfToken) void syncOfflineSales(db, auth.csrfToken)
+          .then(async () => {
+            setQueueCount(await db.pending.where("state").equals("queued").count());
+            setQueueRows(await db.pending.where("state").anyOf("queued", "held", "blocked").toArray());
+          }).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "Sync needs review"));
       }}>Retry sync</button>
       <label>Recovery passphrase<input type="password" className="input" value={recoveryPassphrase}
         onChange={(event) => setRecoveryPassphrase(event.target.value)} autoComplete="new-password" /></label>

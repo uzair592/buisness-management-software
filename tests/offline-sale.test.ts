@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { PartitionedLocalDatabase, bootstrapLocalIdentity, installCatalogueSnapshot } from "../apps/web/src/db/index";
 import { issueOfflineCashSale, type OfflineCashInput } from "../apps/web/src/db/offline-sale";
 import { exportPendingRecovery, listPendingPartitions } from "../apps/web/src/db/recovery";
+import { syncOfflineSales } from "../apps/web/src/db/offline-sync";
 import type { IdentityBootstrap } from "../packages/contracts/src/index";
 
 const id = () => crypto.randomUUID();
@@ -103,4 +104,29 @@ test("older epoch pending work stays discoverable only for its user and business
     assert.deepEqual(await listPendingPartitions(id(), businessId), []);
     assert.deepEqual(await listPendingPartitions(userId, id()), []);
   } finally { db.close(); await db.delete(); }
+});
+
+test("expired pull cursor pauses manual and automatic upload without changing issued work", async () => {
+  const db = await setup(`issue-${id()}`);
+  const originalFetch = globalThis.fetch;
+  const originalNavigator = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+  const calls: string[] = [];
+  try {
+    const saved = await issueOfflineCashSale(db, sale());
+    Object.defineProperty(globalThis, "navigator", { configurable: true, value: { locks: undefined } });
+    globalThis.fetch = async (input, init) => {
+      calls.push(`${init?.method ?? "GET"} ${String(input)}`);
+      return new Response(JSON.stringify({ code: "CURSOR_EXPIRED" }), { status: 410 });
+    };
+    await assert.rejects(syncOfflineSales(db, "csrf"), /Sync history expired/);
+    assert.equal(calls.length, 1);
+    assert.ok(calls[0].startsWith("GET /v1/sync/pull?"));
+    assert.equal((await db.pending.get(saved.commandId))?.state, "queued");
+    assert.equal((await db.issuedSales.get(saved.id))?.number, saved.number);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalNavigator) Object.defineProperty(globalThis, "navigator", originalNavigator);
+    else Reflect.deleteProperty(globalThis, "navigator");
+    db.close(); await db.delete();
+  }
 });
