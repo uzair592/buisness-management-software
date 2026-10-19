@@ -1686,6 +1686,10 @@ main {
 .live-billing-totals { display:grid; grid-template-columns:1fr auto; gap:.3rem .7rem; }
 .live-billing-grand { display:flex; justify-content:space-between; align-items:center; border-block:1px solid #dce3ea; padding:.65rem 0; font-weight:700; }
 .live-billing-grand strong { font-size:1.45rem; }
+.live-issue-queue { border:1px solid #cbd5e1; border-radius:.75rem; padding:.9rem; margin:.75rem 0; background:#f8fafc; display:grid; gap:.55rem; }
+.live-issue-queue ul { list-style:disc; padding-left:1.2rem; max-height:11rem; overflow:auto; }
+.live-issue-queue li { overflow-wrap:anywhere; font-size:.85rem; }
+.live-issue-queue label { max-width:20rem; }
 @media (max-width:1050px) { .live-billing-grid { grid-template-columns:1fr; } .live-billing-summary { position:static; } }
 @media (max-width:650px) { .live-billing-top { grid-template-columns:1fr; } .live-billing-line-fields { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 @media print { body * { visibility:hidden !important; } .sale-print, .sale-print * { visibility:visible !important; }

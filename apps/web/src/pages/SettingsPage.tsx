@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Button } from "@business/ui";
 import { useAuth } from "../context/AuthContext";
 import {
@@ -11,7 +11,11 @@ import {
   readCachedIdentity,
   isOfflineLeaseValid,
   closeActiveLocalDb,
+  installCatalogueSnapshot,
+  PartitionedLocalDatabase,
 } from "../db/index";
+import { pullCatalogueChanges } from "../db/offline-sync";
+import { exportPendingRecovery, listPendingPartitions, type PendingPartitionSummary } from "../db/recovery";
 
 export function SettingsPage() {
   const auth = useAuth();
@@ -68,6 +72,36 @@ export function SettingsPage() {
     ReturnType<typeof readCachedIdentity>
   > | null>(null);
   const [bootstrapStatus, setBootstrapStatus] = useState<string | null>(null);
+  const [syncBusy, setSyncBusy] = useState(false);
+  const [pendingPartitions, setPendingPartitions] = useState<PendingPartitionSummary[]>([]);
+  const [recoveryPassphrase, setRecoveryPassphrase] = useState("");
+  const [recoveryConfirm, setRecoveryConfirm] = useState("");
+  const [recoveryStatus, setRecoveryStatus] = useState("");
+
+  const refreshPendingPartitions = useCallback(async () => {
+    if (!auth.user || !auth.selectedBusinessId) { setPendingPartitions([]); return; }
+    try { setPendingPartitions(await listPendingPartitions(auth.user.id, auth.selectedBusinessId)); }
+    catch { setRecoveryStatus("Could not inspect this browser's saved work. Keep this browser profile for review."); }
+  }, [auth.user, auth.selectedBusinessId]);
+  useEffect(() => { void refreshPendingPartitions(); }, [refreshPendingPartitions]);
+
+  async function downloadPartitionRecovery(partition: PendingPartitionSummary) {
+    if (recoveryPassphrase.length < 12 || recoveryPassphrase !== recoveryConfirm) {
+      setRecoveryStatus("Enter matching recovery passphrases of at least 12 characters."); return;
+    }
+    const db = new PartitionedLocalDatabase(partition.name);
+    try {
+      const encrypted = await exportPendingRecovery(db, recoveryPassphrase);
+      const url = URL.createObjectURL(new Blob([encrypted], { type: "application/json" }));
+      const link = document.createElement("a");
+      link.href = url; link.download = `bms-recovery-epoch-${partition.datasetEpoch}-${new Date().toISOString().slice(0, 10)}.json`;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 30_000);
+      setRecoveryPassphrase(""); setRecoveryConfirm("");
+      setRecoveryStatus("Encrypted recovery downloaded. Keep its passphrase separately; the file cannot be opened without it.");
+    } catch (cause) { setRecoveryStatus(cause instanceof Error ? cause.message : "Recovery export failed"); }
+    finally { db.close(); }
+  }
 
   // Finding 4: Deliberately bind browser to a device instead of blindly picking the first enrolled device
   const [boundDeviceId, setBoundDeviceId] = useState<string | null>(() => {
@@ -351,7 +385,12 @@ export function SettingsPage() {
         datasetEpoch: bootstrapData.business.datasetEpoch,
       });
 
+      if (bootstrapData.business.id !== auth.selectedBusinessId || bootstrapData.device.id !== device.id ||
+        bootstrapData.membership.id !== device.membershipId) throw new Error("Bootstrap identity scope changed");
       await bootstrapLocalIdentity(db, bootstrapData);
+      await installCatalogueSnapshot(db, bootstrapData, ["Owner", "Accountant"].includes(bootstrapData.membership.role));
+      await db.identity.put({ key: "user", value: auth.user });
+      await refreshPendingPartitions();
       const cached = await readCachedIdentity(db);
       setLocalCache(cached);
 
@@ -365,11 +404,27 @@ export function SettingsPage() {
           bootstrappedAt: new Date().toISOString(),
         }),
       );
+      localStorage.setItem("bms_last_bootstrap", JSON.stringify({ userId: auth.user!.id,
+        businessId: auth.selectedBusinessId!, enrollmentId: device.id,
+        datasetEpoch: bootstrapData.business.datasetEpoch }));
 
-      setBootstrapStatus("Bootstrap successful! Permitted data cached in partitioned IndexedDB.");
+      setBootstrapStatus("Permitted catalogue cached. Cash bills can be saved on this device while disconnected; cloud acceptance follows reconnect.");
     } catch (err: unknown) {
       setBootstrapStatus(`Bootstrap error: ${err instanceof Error ? err.message : "Unknown error"}`);
     }
+  }
+
+  async function handlePullCatalogue() {
+    if (!auth.user || !auth.selectedBusinessId || !boundDeviceId || !localCache?.business) return;
+    setSyncBusy(true);
+    try {
+      const db = getLocalDatabase({ userId: auth.user.id, businessId: auth.selectedBusinessId,
+        enrollmentId: boundDeviceId, datasetEpoch: localCache.business.datasetEpoch });
+      const cursor = await pullCatalogueChanges(db);
+      setBootstrapStatus(`Catalogue updated through cursor ${cursor}.`);
+    } catch (error) {
+      setBootstrapStatus(error instanceof Error ? error.message : "Could not update catalogue");
+    } finally { setSyncBusy(false); }
   }
 
   async function handleRevokeSession(sessionId: string) {
@@ -851,6 +906,10 @@ export function SettingsPage() {
         {/* Cached Partition Overview */}
         {localCache && (
           <div className="p-3 bg-gray-50 border rounded text-xs space-y-1">
+            <Button onClick={() => void handlePullCatalogue()} disabled={syncBusy || !boundDeviceId}
+              className="btn-secondary text-xs py-1 px-2">
+              {syncBusy ? "Updating catalogue…" : "Update catalogue"}
+            </Button>
             <p className="font-semibold text-gray-700">IndexedDB Partition Verified:</p>
             <p>
               <b>Business:</b> {localCache.business?.name} (Epoch {localCache.business?.datasetEpoch})
@@ -875,6 +934,19 @@ export function SettingsPage() {
             </p>
           </div>
         )}
+        {pendingPartitions.length > 0 && <section aria-label="Saved issued work" className="p-4 bg-amber-50 border border-amber-200 rounded-lg space-y-3">
+          <h3 className="font-bold">Issued work saved in this browser</h3>
+          <p className="text-sm">These bills are still pending or held. Older dataset epochs remain separate for review; do not clear browser data.</p>
+          <ul className="text-sm list-disc pl-5">{pendingPartitions.map((partition) =>
+            <li key={partition.name}>Epoch {partition.datasetEpoch} · Device {partition.enrollmentId} · {partition.count} bill(s)
+              <button type="button" className="btn-ghost" onClick={() => void downloadPartitionRecovery(partition)}>Download encrypted recovery</button>
+            </li>)}</ul>
+          <label className="block text-sm">Recovery passphrase<input className="input" type="password" autoComplete="new-password"
+            value={recoveryPassphrase} onChange={(event) => setRecoveryPassphrase(event.target.value)} /></label>
+          <label className="block text-sm">Confirm passphrase<input className="input" type="password" autoComplete="new-password"
+            value={recoveryConfirm} onChange={(event) => setRecoveryConfirm(event.target.value)} /></label>
+          {recoveryStatus && <p role="status" className="text-sm">{recoveryStatus}</p>}
+        </section>}
       </div>
 
       {/* Change Password */}

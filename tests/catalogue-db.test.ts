@@ -133,7 +133,9 @@ test("M04 catalogue persists, isolates tenants, enforces versions and sellable r
   assert.equal(cashierBootstrap.statusCode, 200, cashierBootstrap.body);
   assert.equal(cashierBootstrap.json().catalogue.accountSetup, null);
   assert.ok(cashierBootstrap.json().catalogue.items.some((row: { id: string }) => row.id === item.json().id));
-  assert.ok(!/CASH|Electricity|expenseCategory|classification|cost|profit/i.test(JSON.stringify(cashierBootstrap.json().catalogue)));
+  assert.ok(!/Electricity|expenseCategory|classification|cost|profit/i.test(JSON.stringify(cashierBootstrap.json().catalogue)));
+  assert.ok(cashierBootstrap.json().catalogue.cashAccounts.every((row: Record<string, unknown>) =>
+    Object.keys(row).every((key) => ["id", "name", "kind"].includes(key)) && row.kind === "Cash"));
 
   const provisional = { commandId: crypto.randomUUID(), provisionalPartyId: crypto.randomUUID(),
     deviceEnrollmentId: cashierDeviceId, datasetEpoch: cashierBootstrap.json().business.datasetEpoch,
@@ -189,7 +191,10 @@ test("M04 catalogue persists, isolates tenants, enforces versions and sellable r
     cursor = page.json().nextCursor;
   }
   assert.ok(permitted.some((change) => change.action === "party.create" && change.row.id === pullParty.json().id));
-  assert.ok(!/PETTY|Petty cash|classification|expenseCategory/i.test(JSON.stringify(permitted)));
+  const cashierTill = permitted.find((change) => change.action === "account.create" && change.row.id === pullAccount.json().id);
+  assert.ok(cashierTill);
+  assert.ok(Object.keys(cashierTill.row).every((key) => ["id", "name", "kind", "archivedAt"].includes(key)));
+  assert.ok(!/classification|expenseCategory|cost|profit/i.test(JSON.stringify(permitted)));
   assert.equal((await send(b, "GET", `/v1/sync/pull?deviceEnrollmentId=${cashierDeviceId}&afterCursor=0`)).statusCode, 403);
 
   const reloaded = await send(a, "GET", "/v1/catalogue/items?q=Mineral&page=1");
