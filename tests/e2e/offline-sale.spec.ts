@@ -1,6 +1,7 @@
 import { test, expect } from "./fixtures";
 
 test("M06 two browser profiles issue the last item offline and converge after reconnect", async ({ page, browser }) => {
+  test.setTimeout(120_000);
   const suffix = crypto.randomUUID().slice(0, 8);
   const registered = await page.request.post("/v1/auth/register", { data: { username: `dual_${suffix}`,
     password: "CorrectBatteryHorse123!", fullName: "Owner", businessName: `Dual ${suffix}` } });
@@ -62,6 +63,29 @@ test("M06 two browser profiles issue the last item offline and converge after re
     const numbers = (await documents.json()).rows.map((row: { number: string }) => row.number);
     expect(numbers).toContain(`${(await firstDevice.json()).numberPrefix}-O-000001`);
     expect(numbers).toContain(`${(await secondDevice.json()).numberPrefix}-O-000001`);
+    const firstNumber = `${(await firstDevice.json()).numberPrefix}-O-000001`;
+    const secondNumber = `${(await secondDevice.json()).numberPrefix}-O-000001`;
+    for (const client of [page, other]) {
+      await expect.poll(() => client.evaluate(async () => {
+        const binding = JSON.parse(localStorage.getItem("bms_last_bootstrap") ?? "null") as {
+          userId: string; businessId: string; enrollmentId: string; datasetEpoch: number } | null;
+        if (!binding) throw new Error("Missing verified local partition");
+        const name = `bms_${binding.userId}_${binding.businessId}_${binding.enrollmentId}_ep${binding.datasetEpoch}`;
+        const database = await new Promise<IDBDatabase>((resolve, reject) => {
+          const request = indexedDB.open(name);
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error);
+        });
+        try {
+          const rows = await new Promise<Array<{ group: string; row: { number?: string } }>>((resolve, reject) => {
+            const request = database.transaction("catalogue").objectStore("catalogue").getAll();
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+          });
+          return rows.filter((row) => row.group === "sale").map((row) => row.row.number);
+        } finally { database.close(); }
+      }), { timeout: 60_000 }).toEqual(expect.arrayContaining([firstNumber, secondNumber]));
+    }
   } finally { await otherContext.close(); }
 });
 

@@ -12,10 +12,9 @@ import {
   isOfflineLeaseValid,
   closeActiveLocalDb,
   installCatalogueSnapshot,
-  applyCataloguePull,
-  type CataloguePull,
   PartitionedLocalDatabase,
 } from "../db/index";
+import { pullCatalogueChanges } from "../db/offline-sync";
 import { exportPendingRecovery, listPendingPartitions, type PendingPartitionSummary } from "../db/recovery";
 
 export function SettingsPage() {
@@ -421,20 +420,8 @@ export function SettingsPage() {
     try {
       const db = getLocalDatabase({ userId: auth.user.id, businessId: auth.selectedBusinessId,
         enrollmentId: boundDeviceId, datasetEpoch: localCache.business.datasetEpoch });
-      for (let page = 0; page < 100; page++) {
-        const saved = await db.syncState.get("catalogueCursor");
-        if (typeof saved?.value !== "string") throw new Error("Catalogue needs a fresh bootstrap");
-        const query = new URLSearchParams({ deviceEnrollmentId: boundDeviceId, afterCursor: saved.value });
-        const response = await fetch(`/v1/sync/pull?${query}`, { credentials: "include" });
-        if (!response.ok) throw new Error(`Pull stopped (${response.status}); local cursor and data were kept`);
-        const pull = await response.json() as CataloguePull & { hasMore: boolean };
-        await applyCataloguePull(db, pull, ["Owner", "Accountant"].includes(localCache.membership?.role ?? ""));
-        if (!pull.hasMore) {
-          setBootstrapStatus(`Catalogue updated through cursor ${pull.nextCursor}.`);
-          return;
-        }
-      }
-      setBootstrapStatus("More catalogue changes remain. Pull again to continue.");
+      const cursor = await pullCatalogueChanges(db);
+      setBootstrapStatus(`Catalogue updated through cursor ${cursor}.`);
     } catch (error) {
       setBootstrapStatus(error instanceof Error ? error.message : "Could not update catalogue");
     } finally { setSyncBusy(false); }

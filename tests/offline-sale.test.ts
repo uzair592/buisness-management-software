@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { PartitionedLocalDatabase, bootstrapLocalIdentity, installCatalogueSnapshot } from "../apps/web/src/db/index";
 import { issueOfflineCashSale, type OfflineCashInput } from "../apps/web/src/db/offline-sale";
 import { exportPendingRecovery, listPendingPartitions } from "../apps/web/src/db/recovery";
-import { syncOfflineSales } from "../apps/web/src/db/offline-sync";
+import { pullCatalogueChanges, syncOfflineSales } from "../apps/web/src/db/offline-sync";
 import type { IdentityBootstrap } from "../packages/contracts/src/index";
 
 const id = () => crypto.randomUUID();
@@ -129,4 +129,28 @@ test("expired pull cursor pauses manual and automatic upload without changing is
     else Reflect.deleteProperty(globalThis, "navigator");
     db.close(); await db.delete();
   }
+});
+
+test("two in-flight pulls converge on the durable cursor", async () => {
+  const db = await setup(`issue-${id()}`);
+  const originalFetch = globalThis.fetch;
+  let waiting = 0;
+  let release!: () => void;
+  const barrier = new Promise<void>((resolve) => { release = resolve; });
+  try {
+    globalThis.fetch = async (input) => {
+      const cursor = new URL(String(input), "http://localhost").searchParams.get("afterCursor");
+      if (cursor === "0") {
+        if (++waiting === 2) release();
+        await barrier;
+      }
+      return Response.json({ datasetEpoch: 1, permissionVersion: 1, fromCursor: cursor,
+        nextCursor: "1", hasMore: false,
+        changes: cursor === "0" ? [{ cursor: "1", action: "item.create",
+          row: { id: id(), name: "Another bottle" } }] : [] });
+    };
+    const [first, second] = await Promise.all([pullCatalogueChanges(db), pullCatalogueChanges(db)]);
+    assert.deepEqual([first, second], ["1", "1"]);
+    assert.equal((await db.syncState.get("catalogueCursor"))?.value, "1");
+  } finally { globalThis.fetch = originalFetch; db.close(); await db.delete(); }
 });
