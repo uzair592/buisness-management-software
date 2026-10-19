@@ -5,7 +5,15 @@ import { formatMoney, lineAmount, validQuantity } from "@business/domain";
 import { usePreview } from "../preview/PreviewProvider";
 import { cartAmount, itemById, partyName } from "../preview/fixtures";
 import { TrySample } from "../components/PreviewActions";
+import { useAuth } from "../context/AuthContext";
+import { LiveSalePage } from "./LiveSalePage";
 export function NewSalePage() {
+  const { authenticated, selectedBusinessId } = useAuth();
+  const { sample } = usePreview();
+  if (authenticated && selectedBusinessId && !sample) return <LiveSalePage />;
+  return <SampleSalePage />;
+}
+function SampleSalePage() {
   const preview = usePreview();
   const search = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");

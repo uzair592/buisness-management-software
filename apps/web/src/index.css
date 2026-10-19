@@ -1668,3 +1668,26 @@ main {
 .catalogue-setup-list { display: grid; gap: .35rem; max-height: 14rem; overflow-y: auto; }
 .catalogue-setup-row { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .4rem .55rem; border: 1px solid var(--border, #e2e8f0); border-radius: .55rem; }
 .catalogue-setup-row span { min-width: 0; overflow-wrap: anywhere; }
+.live-billing-grid { display:grid; grid-template-columns:minmax(0,1.8fr) minmax(290px,.9fr); gap:1rem; align-items:start; }
+.live-billing-main { display:grid; gap:.85rem; min-width:0; }
+.live-billing-top { display:grid; grid-template-columns:1fr 1fr; gap:.8rem; }
+.live-billing label { display:grid; gap:.25rem; font-size:.8rem; font-weight:600; min-width:0; }
+.live-billing-cart { min-height:420px; }
+.live-billing-results { display:grid; max-height:245px; overflow:auto; border:1px solid #dce3ea; border-radius:.6rem; margin:.4rem 0; }
+.live-billing-results button { display:flex; justify-content:space-between; gap:1rem; padding:.65rem .8rem; text-align:left; border-bottom:1px solid #edf0f4; }
+.live-billing-results button:hover { background:#f2f7ff; }
+.live-billing-lines { display:grid; gap:.55rem; margin-top:.85rem; max-height:52vh; overflow:auto; }
+.live-billing-line { border:1px solid #e3e9ef; border-radius:.65rem; padding:.65rem; background:#fff; }
+.live-billing-line-name { display:flex; justify-content:space-between; gap:.8rem; margin-bottom:.55rem; }
+.live-billing-line-fields { display:grid; grid-template-columns: .55fr 1fr .8fr .8fr 1fr auto; align-items:end; gap:.45rem; }
+.live-billing-line-fields .input { width:100%; min-width:0; }
+.live-billing-summary { position:sticky; top:.75rem; display:grid; gap:.65rem; }
+.live-billing-summary h2 { font-size:1.12rem; font-weight:700; }
+.live-billing-totals { display:grid; grid-template-columns:1fr auto; gap:.3rem .7rem; }
+.live-billing-grand { display:flex; justify-content:space-between; align-items:center; border-block:1px solid #dce3ea; padding:.65rem 0; font-weight:700; }
+.live-billing-grand strong { font-size:1.45rem; }
+@media (max-width:1050px) { .live-billing-grid { grid-template-columns:1fr; } .live-billing-summary { position:static; } }
+@media (max-width:650px) { .live-billing-top { grid-template-columns:1fr; } .live-billing-line-fields { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media print { body * { visibility:hidden !important; } .sale-print, .sale-print * { visibility:visible !important; }
+  .sale-print { position:absolute; left:0; top:0; width:100%; color:#000; } .sale-print .print-hide { display:none !important; }
+  .sale-print table { width:100%; border-collapse:collapse; } .sale-print td, .sale-print th { border-bottom:1px solid #999; padding:4px; } }

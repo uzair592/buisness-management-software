@@ -39,9 +39,25 @@ test("M04 owner can create and reload parties, services and opening at desktop a
   await page.getByLabel("Name", { exact: true }).fill("Front till");
   await page.getByRole("button", { name: "Add account" }).click();
   await expect(page.getByRole("cell", { name: "Front till" })).toBeVisible();
+  let releaseSetup!: () => void;
+  let reachedSetup!: () => void;
+  const setupHeld = new Promise<void>((resolve) => { releaseSetup = resolve; });
+  const setupReached = new Promise<void>((resolve) => { reachedSetup = resolve; });
+  await page.route("**/v1/accounts/setup", async (route) => {
+    reachedSetup();
+    await setupHeld;
+    await route.continue();
+  });
   await page.getByRole("button", { name: "Initialize posting accounts" }).click();
+  await setupReached;
+  // A refresh must keep the editing form mounted while the request is pending.
+  await expect(page.getByLabel("Amount")).toBeVisible();
   await page.locator(".account-opening-row select").nth(1).selectOption({ label: "Front till" });
   await page.getByLabel("Amount").fill("100.00");
+  releaseSetup();
+  await expect(page.getByText("Posting accounts initialized.")).toBeVisible();
+  await page.unroute("**/v1/accounts/setup");
+  await expect(page.getByLabel("Amount")).toHaveValue("100.00");
   await page.getByRole("button", { name: "Preview opening" }).click();
   await expect(page.getByRole("heading", { name: "Review before posting" })).toBeVisible();
   page.once("dialog", (dialog) => dialog.accept());

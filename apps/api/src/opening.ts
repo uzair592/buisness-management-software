@@ -24,6 +24,9 @@ const systemAccounts = [
   { code: "OPEN_RECEIVABLE", kind: "Receivable", classification: "Asset", name: "Trade receivables" },
   { code: "OPEN_PAYABLE", kind: "Payable", classification: "Liability", name: "Trade payables" },
   { code: "OPEN_EQUITY", kind: "Equity", classification: "Equity", name: "Opening equity" },
+  { code: "SALE_REVENUE", kind: "General", classification: "Income", name: "Sales revenue" },
+  { code: "SALE_TAX", kind: "General", classification: "Liability", name: "Sales tax payable" },
+  { code: "SALE_COGS", kind: "General", classification: "Expense", name: "Cost of goods sold" },
 ] as const;
 export { systemAccounts };
 
