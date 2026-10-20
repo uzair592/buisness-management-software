@@ -15,7 +15,7 @@ import {
   PartitionedLocalDatabase,
 } from "../db/index";
 import { pullCatalogueChanges } from "../db/offline-sync";
-import { exportPendingRecovery, listPendingPartitions, type PendingPartitionSummary } from "../db/recovery";
+import { exportPendingRecovery, inspectPendingRecovery, listPendingPartitions, type PendingPartitionSummary } from "../db/recovery";
 
 export function SettingsPage() {
   const auth = useAuth();
@@ -77,6 +77,10 @@ export function SettingsPage() {
   const [recoveryPassphrase, setRecoveryPassphrase] = useState("");
   const [recoveryConfirm, setRecoveryConfirm] = useState("");
   const [recoveryStatus, setRecoveryStatus] = useState("");
+  const [inspectionPassphrase, setInspectionPassphrase] = useState("");
+  const [inspection, setInspection] = useState<Awaited<ReturnType<typeof inspectPendingRecovery>> | null>(null);
+  const [inspectionError, setInspectionError] = useState("");
+  useEffect(() => { setInspection(null); setInspectionError(""); setInspectionPassphrase(""); }, [auth.selectedBusinessId]);
 
   const refreshPendingPartitions = useCallback(async () => {
     if (!auth.user || !auth.selectedBusinessId) { setPendingPartitions([]); return; }
@@ -101,6 +105,16 @@ export function SettingsPage() {
       setRecoveryStatus("Encrypted recovery downloaded. Keep its passphrase separately; the file cannot be opened without it.");
     } catch (cause) { setRecoveryStatus(cause instanceof Error ? cause.message : "Recovery export failed"); }
     finally { db.close(); }
+  }
+
+  async function inspectRecoveryFile(file: File | undefined) {
+    setInspection(null); setInspectionError("");
+    if (!file || !auth.selectedBusinessId) return;
+    if (file.size > 10_000_000) { setInspectionError("Recovery file is too large for review."); return; }
+    try {
+      setInspection(await inspectPendingRecovery(await file.text(), inspectionPassphrase, auth.selectedBusinessId));
+      setInspectionPassphrase("");
+    } catch (cause) { setInspectionError(cause instanceof Error ? cause.message : "Recovery inspection failed"); }
   }
 
   // Finding 4: Deliberately bind browser to a device instead of blindly picking the first enrolled device
@@ -946,6 +960,21 @@ export function SettingsPage() {
           <label className="block text-sm">Confirm passphrase<input className="input" type="password" autoComplete="new-password"
             value={recoveryConfirm} onChange={(event) => setRecoveryConfirm(event.target.value)} /></label>
           {recoveryStatus && <p role="status" className="text-sm">{recoveryStatus}</p>}
+        </section>}
+        {auth.selectedBusinessId && <section aria-label="Inspect recovery file" className="p-4 bg-white border rounded-lg space-y-3">
+          <h3 className="font-bold">Inspect encrypted recovery</h3>
+          <p className="text-sm">Review saved bills for this business. The file is decrypted in this browser; inspection does not upload, restore or replay issued work.</p>
+          <label className="block text-sm">File passphrase<input className="input" type="password" autoComplete="off"
+            value={inspectionPassphrase} onChange={(event) => setInspectionPassphrase(event.target.value)} /></label>
+          <label className="block text-sm">Recovery file<input className="input" type="file" accept=".json,application/json"
+            onChange={(event) => { void inspectRecoveryFile(event.target.files?.[0]); event.target.value = ""; }} /></label>
+          {inspectionError && <p role="alert" className="text-sm text-red-700">{inspectionError}</p>}
+          {inspection && inspection.businessId === auth.selectedBusinessId && <div role="status" className="text-sm space-y-2">
+            <p>Epoch {inspection.datasetEpoch} · Device {inspection.deviceEnrollmentId} · {inspection.records.length} issued bill(s)</p>
+            <ul className="list-disc pl-5">{inspection.records.map((record) =>
+              <li key={record.number}>{record.number} · {record.state} · {new Date(record.issuedAt).toLocaleString()}</li>)}</ul>
+            <p>Keep this file and its passphrase for authorised review. No commands were submitted.</p>
+          </div>}
         </section>}
       </div>
 

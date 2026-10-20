@@ -3,8 +3,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { PartitionedLocalDatabase, bootstrapLocalIdentity, installCatalogueSnapshot } from "../apps/web/src/db/index";
 import { issueOfflineCashSale, type OfflineCashInput } from "../apps/web/src/db/offline-sale";
-import { exportPendingRecovery, listPendingPartitions } from "../apps/web/src/db/recovery";
-import { pullCatalogueChanges, syncOfflineSales } from "../apps/web/src/db/offline-sync";
+import { exportPendingRecovery, inspectPendingRecovery, listPendingPartitions } from "../apps/web/src/db/recovery";
+import { pullCatalogueChanges, pushQueuedSales, syncOfflineSales } from "../apps/web/src/db/offline-sync";
 import type { IdentityBootstrap } from "../packages/contracts/src/index";
 
 const id = () => crypto.randomUUID();
@@ -91,6 +91,26 @@ test("recovery export encrypts pending receipt and rejects the wrong passphrase"
     const recovered = JSON.parse(new TextDecoder().decode(await decrypt("a sufficiently long passphrase")));
     assert.equal(recovered.pending[0].commandId, saved.commandId);
     assert.equal(recovered.issuedSales[0].number, saved.number);
+    const inspected = await inspectPendingRecovery(encrypted, "a sufficiently long passphrase", businessId);
+    assert.deepEqual(inspected.records.map((record) => ({ number: record.number, state: record.state })),
+      [{ number: saved.number, state: "queued" }]);
+    assert.equal(inspected.datasetEpoch, 1);
+    await assert.rejects(inspectPendingRecovery(encrypted, "a sufficiently long passphrase", id()), /different business/);
+    await assert.rejects(inspectPendingRecovery(encrypted, "wrong passphrase", businessId), /incorrect or the file was changed/);
+    assert.equal(await db.pending.where("state").equals("queued").count(), 1, "inspection never replays or changes work");
+  } finally { db.close(); await db.delete(); }
+});
+
+test("recovery inspection rejects a pending command paired with a different issued receipt", async () => {
+  const db = await setup(`issue-${id()}`);
+  try {
+    const saved = await issueOfflineCashSale(db, sale());
+    const row = (await db.pending.get(saved.commandId))!;
+    await db.pending.update(saved.commandId, { payload: { ...(row.payload as object), number: "D01-O-999999" } });
+    const encrypted = await exportPendingRecovery(db, "a sufficiently long passphrase");
+    await assert.rejects(inspectPendingRecovery(encrypted, "a sufficiently long passphrase", businessId),
+      /Invalid recovery contents/);
+    assert.equal((await db.issuedSales.get(saved.id))?.number, saved.number);
   } finally { db.close(); await db.delete(); }
 });
 
@@ -104,6 +124,45 @@ test("older epoch pending work stays discoverable only for its user and business
     assert.deepEqual(await listPendingPartitions(id(), businessId), []);
     assert.deepEqual(await listPendingPartitions(userId, id()), []);
   } finally { db.close(); await db.delete(); }
+});
+
+test("a mismatched server receipt holds the original issued bill for review", async () => {
+  const db = await setup(`issue-${id()}`);
+  const originalFetch = globalThis.fetch;
+  let requests = 0;
+  try {
+    const saved = await issueOfflineCashSale(db, sale());
+    globalThis.fetch = async () => {
+      requests++;
+      return Response.json({ commandId: saved.commandId, sale: { id: saved.id, number: "other-number" } });
+    };
+    assert.deepEqual(await pushQueuedSales(db, "csrf"), { accepted: 0, held: 1, remaining: 0 });
+    assert.equal((await db.pending.get(saved.commandId))?.state, "held");
+    assert.match((await db.pending.get(saved.commandId))?.reason ?? "", /receipt identity/);
+    assert.equal((await db.issuedSales.get(saved.id))?.number, saved.number);
+    await pushQueuedSales(db, "csrf");
+    assert.equal(requests, 1, "held work is not silently retried");
+  } finally { globalThis.fetch = originalFetch; db.close(); await db.delete(); }
+});
+
+test("a lost acknowledgement keeps the exact issued payload for retry", async () => {
+  const db = await setup(`issue-${id()}`);
+  const originalFetch = globalThis.fetch;
+  const bodies: string[] = [];
+  try {
+    const saved = await issueOfflineCashSale(db, sale());
+    globalThis.fetch = async (_input, init) => {
+      bodies.push(String(init?.body));
+      if (bodies.length === 1) throw new Error("Connection lost after server commit");
+      return Response.json({ commandId: saved.commandId, sale: { id: saved.id, number: saved.number } });
+    };
+    assert.deepEqual(await pushQueuedSales(db, "csrf"), { accepted: 0, held: 0, remaining: 1 });
+    assert.equal((await db.pending.get(saved.commandId))?.state, "queued");
+    assert.deepEqual(await pushQueuedSales(db, "csrf"), { accepted: 1, held: 0, remaining: 0 });
+    assert.equal(bodies.length, 2);
+    assert.equal(bodies[0], bodies[1]);
+    assert.equal((await db.pending.get(saved.commandId))?.state, "acknowledged");
+  } finally { globalThis.fetch = originalFetch; db.close(); await db.delete(); }
 });
 
 test("expired pull cursor pauses manual and automatic upload without changing issued work", async () => {
