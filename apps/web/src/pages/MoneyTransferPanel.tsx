@@ -80,7 +80,7 @@ export function MoneyTransferPanel({ accounts, businessId, csrfToken }: {
         <option value="">Choose…</option>{choices.map((account) => <option key={account.id} value={account.id}>{account.name} ({account.kind})</option>)}</select></label>
       <label>To<select className="input" required disabled={uncertain} value={form.destinationAccountId} onChange={(event) => update({ destinationAccountId: event.target.value })}>
         <option value="">Choose…</option>{choices.filter((account) => account.id !== form.sourceAccountId).map((account) => <option key={account.id} value={account.id}>{account.name} ({account.kind})</option>)}</select></label>
-      <label>Amount<input className="input" required disabled={uncertain} inputMode="decimal" pattern="(?!0+([.]0+)?$)[0-9]+([.][0-9]{1,2})?" value={form.amount} onChange={(event) => update({ amount: event.target.value })} /></label>
+      <label>Transfer amount<input className="input" required disabled={uncertain} inputMode="decimal" pattern="(?!0+([.]0+)?$)[0-9]+([.][0-9]{1,2})?" value={form.amount} onChange={(event) => update({ amount: event.target.value })} /></label>
       <label>Reference<input className="input" required disabled={uncertain} maxLength={120} value={form.reference} onChange={(event) => update({ reference: event.target.value })} /></label>
       <label>Date<input className="input" type="date" required disabled={uncertain} value={form.businessDate} onChange={(event) => update({ businessDate: event.target.value })} /></label>
       <button className="btn-primary" disabled={busy || choices.length < 2 || !navigator.onLine}>{uncertain ? "Retry saved transfer" : "Post transfer"}</button>

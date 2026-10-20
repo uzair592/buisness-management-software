@@ -23,7 +23,7 @@ test("owner posts a transfer and reloads both account books", async ({ page }, t
   await expect(page.getByRole("heading", { name: "Transfers & account books" })).toBeVisible();
   await page.getByLabel("From").selectOption({ label: "Till (Cash)" });
   await page.getByLabel("To").selectOption({ label: "Bank (Bank)" });
-  await page.getByLabel("Amount", { exact: true }).fill("25.50");
+  await page.getByLabel("Transfer amount").fill("25.50");
   await page.getByLabel("Reference").fill("Daily deposit");
   let committedResponse = false;
   await page.route("**/v1/accounts/transfers", async (route) => {
