@@ -44,7 +44,7 @@ for (const [width, height] of [
       .click();
     await expect(
       page.getByRole("dialog", { name: "About this preview" }),
-    ).toContainText("not available yet");
+    ).toContainText("Business login and online invoice posting require a server connection.");
     await page.keyboard.press("Escape");
     await expect(
       page.getByRole("button", { name: "Preview: available functionality" }),
@@ -79,7 +79,6 @@ for (const [width, height] of [
       "Expenses",
       "Reports",
       "Settings",
-      "Sync & Backup",
     ]) {
       if (width < 1024)
         await page.getByRole("button", { name: "Open navigation" }).click();

@@ -10,7 +10,7 @@ import { LiveSalePage } from "./LiveSalePage";
 export function NewSalePage() {
   const { authenticated, selectedBusinessId } = useAuth();
   const { sample } = usePreview();
-  if (authenticated && selectedBusinessId && !sample) return <LiveSalePage />;
+  if (authenticated && selectedBusinessId && !sample) return <LiveSalePage key={selectedBusinessId} />;
   return <SampleSalePage />;
 }
 function SampleSalePage() {

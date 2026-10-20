@@ -2,6 +2,8 @@
 
 Use this contract with exactly one numbered milestone prompt. Repository: https://github.com/uzair592/buisness-management-software
 
+Current scope is online browser delivery. Historical local issue/outbox and offline sync rules apply only to preserving already issued legacy records; new financial posting requires the server. Use [online M06](06-online-web-transition.md) rather than the retired offline M06 prompt.
+
 ## Assignment
 
 Build an original, easy-to-use business-management product with connected billing, inventory, accounts and multi-device offline operation. The repository's documents describe the intended product, not completed software. Read the current repository and verify its actual state before making claims.

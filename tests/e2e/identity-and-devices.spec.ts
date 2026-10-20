@@ -100,20 +100,14 @@ test.describe("M02 Identity, Authentication, and Settings UI", () => {
     await expect(page.getByRole("button", { name: "Log Out" })).toBeVisible();
     await expect(page.getByText("Apex Owner User")).toBeVisible();
 
-    // 6. Enroll a device and verify deliberate binding & local bootstrap
+    // 6. Enroll a device for server-issued invoice numbers.
     await expect(page.locator("#new-device-loc option").first()).toBeAttached({ timeout: 10000 });
     await page.getByLabel("Device Name *").fill("Front Counter POS");
     await page.getByRole("button", { name: "Enroll Device" }).click();
 
-    // Verify enrolled device appears and shows bound browser status
+    // The enrolled device is available without a local offline bootstrap.
     await expect(page.getByText("Front Counter POS")).toBeVisible({ timeout: 10000 });
-    await expect(page.getByText("Bound Browser")).toBeVisible();
-
-    // Trigger local IndexedDB bootstrap
-    await page.getByRole("button", { name: "Bootstrap IndexedDB" }).first().click();
-    await expect(
-      page.getByText("Permitted catalogue cached. Cash bills can be saved on this device while disconnected; cloud acceptance follows reconnect."),
-    ).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole("button", { name: "Bootstrap IndexedDB" })).toHaveCount(0);
 
     // 7. Change password
     await page.getByLabel("Current Password *").fill(initialPassword);

@@ -17,11 +17,14 @@ export async function pushQueuedSales(db: PartitionedLocalDatabase, csrfToken: s
         headers: { "Content-Type": "application/json", "x-csrf-token": csrfToken }, body: JSON.stringify(envelope) });
       if (response.ok) {
         const result = await response.json() as { commandId: string; sale: { id: string; number: string } };
-        if (result.commandId !== record.commandId || result.sale.id !== envelope.input.id || result.sale.number !== envelope.number)
-          throw new Error("Server receipt identity did not match the issued bill");
+        if (result.commandId !== record.commandId || result.sale?.id !== envelope.input.id || result.sale?.number !== envelope.number) {
+          await db.pending.update(record.commandId, { state: "held", reason: "Server receipt identity did not match the issued bill" });
+          summary.held++;
+          continue;
+        }
         await db.pending.update(record.commandId, { state: "acknowledged", result, reason: undefined });
         summary.accepted++;
-      } else if ([400, 403, 409].includes(response.status)) {
+      } else if ([400, 403, 409, 410].includes(response.status)) {
         const problem = await response.json() as { error?: string; code?: string };
         await db.pending.update(record.commandId, { state: "held", reason: `${problem.code ?? "REVIEW"}: ${problem.error ?? "Owner review required"}` });
         summary.held++;

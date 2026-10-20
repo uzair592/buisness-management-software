@@ -1,5 +1,7 @@
 # Testing and release evidence
 
+The 2026-10-20 online-only decision supersedes offline issue cases T06–T12 as release prerequisites. Retain them as historical regression context for legacy recovery. Current M06 exit evidence is defined in [online M06](../../prompts/06-online-web-transition.md); real PostgreSQL/browser online retry, tenant scope, two-browser operation and old-browser retirement remain required.
+
 ## Test layers
 
 | Layer | Required behaviour |

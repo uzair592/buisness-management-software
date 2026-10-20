@@ -168,40 +168,19 @@ test("M05 online sale persists number, exact split, stock, journal and replay on
       { name: "Bottle", kind: "Goods", conversion: "1", tax: { mode: "exclusive", percent: "10" } },
     ] } };
   const push = () => send(owner, "POST", "/v1/sync/push/sale", issued);
-  const accepted = await push();
-  assert.equal(accepted.statusCode, 200, accepted.body);
-  assert.equal(accepted.json().sale.number, issued.number);
-  assert.equal((await push()).json().sale.number, issued.number, "lost acknowledgement replays original receipt");
-  assert.equal((await send(owner, "POST", "/v1/sync/push/sale", { ...issued,
-    number: `${device.json().numberPrefix}-O-999999` })).statusCode, 409);
-  assert.equal((await send(other, "POST", "/v1/sync/push/sale", issued)).statusCode, 409);
+  const retired = await push();
+  assert.equal(retired.statusCode, 410, retired.body);
+  assert.equal(retired.json().code, "OFFLINE_RETIRED");
+  assert.equal((await push()).statusCode, 410, "retry cannot post an offline command");
+  assert.equal((await send(other, "POST", "/v1/sync/push/sale", issued)).statusCode, 410);
   const offlineEffects = await withTenantContext(db, { businessId: owner.id }, async (tx) => ({
-    sale: await tx.saleDocument.findUniqueOrThrow({ where: { id: offlineSale.id } }),
+    sale: await tx.saleDocument.findUnique({ where: { id: offlineSale.id } }),
     receiptCount: await tx.commandReceipt.count({ where: { businessId: owner.id, commandId: offlineSale.commandId } }),
-    stock: await tx.stockMovement.findFirstOrThrow({ where: { businessId: owner.id, sourceLineId: offlineLine.id } }),
+    stockCount: await tx.stockMovement.count({ where: { businessId: owner.id, sourceLineId: offlineLine.id } }),
     journalCount: await tx.journalEntry.count({ where: { businessId: owner.id, sourceEvent: { commandId: offlineSale.commandId } } }),
   }));
-  assert.equal(offlineEffects.sale.status, "Posted");
-  assert.equal(offlineEffects.receiptCount, 1);
-  assert.equal(offlineEffects.journalCount, 1);
-  assert.equal(offlineEffects.stock.quantityDelta.toString(), "-100");
-  assert.equal(offlineEffects.stock.valuationStatus, "Provisional");
-
-  const wrongEpoch = await send(owner, "POST", "/v1/sync/push/sale", { ...issued, datasetEpoch: 2 });
-  assert.equal(wrongEpoch.statusCode, 409, wrongEpoch.body);
-  assert.equal(wrongEpoch.json().code, "EPOCH");
-  const futureIssue = await send(owner, "POST", "/v1/sync/push/sale", { ...issued,
-    issuedAt: new Date(Date.now() + 60 * 60_000).toISOString() });
-  assert.equal(futureIssue.statusCode, 409, futureIssue.body);
-  assert.equal(futureIssue.json().code, "LEASE");
-  const unsupported = await send(owner, "POST", "/v1/sync/push/sale", { ...issued, schemaVersion: 2 });
-  assert.equal(unsupported.statusCode, 400, unsupported.body);
-  assert.equal(unsupported.json().code, "SCHEMA");
-  const revoked = await send(owner, "POST", "/v1/devices/revoke", {
-    deviceEnrollmentId: device.json().id, reason: "Device lost",
-  });
-  assert.equal(revoked.statusCode, 200, revoked.body);
-  const held = await push();
-  assert.equal(held.statusCode, 409, held.body);
-  assert.equal(held.json().code, "AUTHORITY");
+  assert.equal(offlineEffects.sale, null);
+  assert.equal(offlineEffects.receiptCount, 0);
+  assert.equal(offlineEffects.stockCount, 0);
+  assert.equal(offlineEffects.journalCount, 0);
 });

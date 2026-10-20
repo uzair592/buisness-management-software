@@ -4,11 +4,12 @@ Repository: https://github.com/uzair592/buisness-management-software
 
 Use [the shared agent contract](00-agent-contract.md) and AGENTS.md. Implement **M08 only**, on a reviewable milestone branch. Read current PROJECT_STATUS.md and verify prerequisites; all features in the plan are proposed until implemented and tested.
 
+The online-only product decision supersedes offline draft/issue requirements. All credits, refunds, counts and adjustments use the server.
+
 ## Required reading
 
 - [05-data-model.md](../docs/planning/05-data-model.md)
 - [06-business-flows.md](../docs/planning/06-business-flows.md)
-- [07-offline-sync.md](../docs/planning/07-offline-sync.md)
 - [08-accounting-rules.md](../docs/planning/08-accounting-rules.md)
 - [11-testing-and-release.md](../docs/planning/11-testing-and-release.md)
 
@@ -19,7 +20,7 @@ Use [the shared agent contract](00-agent-contract.md) and AGENTS.md. Implement *
 3. Implement online stock counts/approved adjustments with source links, base-unit quantities, reasons and audit. Services do not move stock. Damaged/non-restocked returns must not invent sellable stock.
 4. Complete negative-stock deficit settlement: deterministic quantity allocation, original provisional basis, actual receipt cost, linked COGS/inventory adjustments, partial receipts, subsequent returns and rounding residuals.
 5. Preserve historical business dates and closed-period rules. Late cost evidence appends approved adjustments; it does not rewrite historical receipt snapshots.
-6. Add readable return/refund/stock history screens and clear provisional valuation indicators. Offline return/count/refund is draft-only in v1.
+6. Add readable return/refund/stock history screens and clear provisional valuation indicators. Drafts and posting require a server connection.
 
 ## Acceptance gate
 

@@ -1,15 +1,15 @@
 # Business Management Software
 
-A proposed business-management product inspired by Vyapar's ease of use: fast billing, connected inventory and accounts, genuine offline sales, and shared access across devices.
+A web-based business-management product inspired by Vyapar's ease of use: fast online billing, connected inventory and accounts, and shared access across devices.
 
-**Current status: M01 foundation merged; UI refinement implemented for review.** The repository includes a responsive UI shell, pnpm workspace and a PostgreSQL health API. An explicit [sample workspace](docs/m01-ui-refinement.md) lets you explore the interface without creating business records. Login, operational billing, offline transactions and deployment remain unimplemented. See [PROJECT_STATUS.md](PROJECT_STATUS.md) for acceptance evidence. Product name and additional custom features are still open.
+**Current status:** Online sale and identity foundations are merged. The online-only transition is in local review; purchases, returns, reports and release gates remain open. An explicit sample workspace can be explored without creating business records. See [PROJECT_STATUS.md](PROJECT_STATUS.md) for actual acceptance evidence. A server connection is required for real billing; older browser-issued bills remain recoverable for reconciliation.
 
 ## Start here
 
 1. Read the [project map](docs/README.md) and [product scope](docs/planning/01-product-scope.md).
 2. Review the [30 rendered diagrams](docs/planning/06-business-flows.md), [architecture](docs/planning/04-architecture.md), and [data model](docs/planning/05-data-model.md). The diagram links cover all planning documents, not just business flows.
 3. Follow the [milestone roadmap](docs/planning/10-delivery-roadmap.md).
-4. Give your coding agent the [agent contract](prompts/00-agent-contract.md) and [Milestone 01 prompt](prompts/01-foundation.md).
+4. Follow the [agent contract](prompts/00-agent-contract.md) and the selected current milestone prompt.
 5. Review each milestone's evidence before starting the next prompt. [PROJECT_STATUS.md](PROJECT_STATUS.md) records actual progress.
 
 ## Working product direction
@@ -19,9 +19,9 @@ A proposed business-management product inspired by Vyapar's ease of use: fast bi
 | First customers | Pakistan-first small retailers, wholesalers, distributors and service businesses |
 | Daily work | Sales, purchases, returns, parties, inventory, expenses, cash and bank, reports |
 | Experience | Clear original design; compact laptop billing; mobile-friendly owner access |
-| Offline | Write-capable local database and durable command queue, not just cached pages |
-| Multiple devices | Cloud authority with local working copies; explicit conflicts and freshness |
-| Platform | Responsive installable PWA first; native packaging only if hardware testing warrants it |
+| Connectivity | Online-only posting against the server; no new browser-issued bills |
+| Multiple devices | Shared PostgreSQL authority; server-side concurrency and permissions |
+| Platform | Responsive browser application on desktop and mobile |
 | Accounts | Double-entry journal behind simple business screens |
 | Local defaults | PKR, Asia/Karachi, English first; configurable generic taxes |
 
@@ -31,7 +31,7 @@ These are planning assumptions, not a claim that every requirement has been appr
 
 - [Feature matrix and release scope](docs/planning/02-feature-matrix.md)
 - [Screen map and UX specification](docs/planning/03-ux-and-screen-map.md)
-- [Offline and multi-device protocol](docs/planning/07-offline-sync.md)
+- [Historical offline protocol and legacy recovery](docs/planning/07-offline-sync.md)
 - [Accounting and inventory rules](docs/planning/08-accounting-rules.md)
 - [Security and permissions](docs/planning/09-security-permissions.md)
 - [Testing and release gates](docs/planning/11-testing-and-release.md)
@@ -40,8 +40,8 @@ These are planning assumptions, not a claim that every requirement has been appr
 - [Agent prompt sequence](prompts/README.md)
 - [Reference research](docs/planning/14-reference-research.md)
 
-No delivery dates or hosting prices are promised at this stage. Estimates should follow a measured vertical slice, especially the two-device offline proof.
+No delivery dates or hosting prices are promised at this stage. Estimates should follow measured online billing and accounting gates.
 
-## Run the foundation preview
+## Run locally
 
-See [development setup and validation](docs/development.md) for the pnpm workspace, local PostgreSQL, health API, and UI preview. M01 does not implement business transactions.
+See [development setup and validation](docs/development.md) for the pnpm workspace, local PostgreSQL, API and web application.

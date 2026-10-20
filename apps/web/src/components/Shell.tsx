@@ -15,7 +15,6 @@ const navigation = [
   { path: "/expenses", label: "Expenses", icon: ExpensesIcon },
   { path: "/reports", label: "Reports", icon: ReportsIcon },
   { path: "/settings", label: "Settings", icon: SettingsIcon },
-  { path: "/sync", label: "Sync & Backup", icon: SyncIcon },
 ];
 export function Shell({ children }: { children: ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
@@ -126,8 +125,7 @@ export function Shell({ children }: { children: ReactNode }) {
             Sample receipts are previews, never saved or issued.
           </p>
           <p>
-            Business login, invoice posting, payments and offline sync are not
-            available yet.
+            Business login and online invoice posting require a server connection.
           </p>
           <p className="dialog-hint">
             Use Ctrl K (⌘ K on Mac) to find pages and actions.
@@ -157,7 +155,6 @@ function HomeIcon({ className }: { className?: string }) {
     </svg>
   );
 }
-
 function SalesIcon({ className }: { className?: string }) {
   return (
     <svg
@@ -311,25 +308,6 @@ function SettingsIcon({ className }: { className?: string }) {
         strokeLinejoin="round"
         strokeWidth={2}
         d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-      />
-    </svg>
-  );
-}
-
-function SyncIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      fill="none"
-      stroke="currentColor"
-      viewBox="0 0 24 24"
-      aria-hidden="true"
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={2}
-        d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
       />
     </svg>
   );

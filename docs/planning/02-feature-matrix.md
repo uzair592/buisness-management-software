@@ -1,38 +1,35 @@
-# Feature and offline matrix
+# Online web feature matrix
 
-All rows are **planned**, not implemented. M01–M13 form the main build sequence. “Offline” assumes an enrolled device, completed initial snapshot, supported cached schema/policy and unexpired signed offline lease.
+This is the intended scope after the 2026-10-20 online-only decision. A planned row is not an implemented feature; check [project status](../../PROJECT_STATUS.md) for evidence. Every real mutation requires an authenticated server connection. The old offline protocol is retained only as history and for recovery of browser-issued bills created before the cutover.
 
-| Module | Core behaviour | First milestone | Offline in core release |
+| Module | Core behaviour | First milestone | Connection and authority |
 | --- | --- | --- | --- |
-| Business and identity | Sign-in, memberships, roles, device enrol/revoke | M02 | Existing local unlock only; no new login/enrolment |
-| Catalogue | Items/services, categories, units, barcodes, active/archive | M04 | Read cached catalogue; draft proposed changes |
-| Parties | Customers/suppliers, dual-role parties, contact data, statements | M04 | Read cached; create provisional party with stable UUID |
-| Opening balances | Stock, cash/bank, receivables/payables and equity balancing | M04 | Online posting only |
-| Sales | Items, discounts, taxes, cash/bank/credit and split payment online | M05 | Cash sale using cached items and permitted cash account at M06 |
-| Credit sales | Customer dues, due date and credit policy | M05 | Draft only in initial release; strict limit needs current server data |
-| Purchases | Stock receipt, supplier bill, payable and payment | M07 | Issue purchase with payable or authorised cash payment; requires cached items and supplier or provisional party |
-| Expenses | Dynamic categories, attachments, cash/bank payment | M07 | Simple paid cash expense with cached category; attachment upload deferred |
-| Payments | Receive/pay, advances, partial allocations, multiple accounts | M07 | Draft only standalone receipts/payments; invoice-cash components sync with parent command |
-| Bank transfers | Transfer across internal money accounts | M07 | Online only |
-| Returns and refunds | Linked partial credits, restock choices and remaining limits | M08 | Draft only; server checks shared return/refund limits |
-| Inventory | Immutable movements, counts/adjustments, valuation exceptions | M08 | Quantity preview and warnings; counts/adjustments post online |
-| Cash close | Count cash, variance reason, close watermark and late entries | M09 | Offline count draft; close online |
-| Reports | Sales, purchases, dues, stock, cash/bank, P&L, trial balance | M09 | Cached report snapshots; explicit coverage and provisional labels |
-| Printing | A4, 80 mm, 58 mm, logo scaling, reprint | Basic M05; full M10 | Print saved documents using installed/browser capability |
-| Device sync | Durable queues, cursor pull, retry, review cases, resnapshot | M06 | Queue supported commands; no cross-device sync during total disconnection |
-| Backup/recovery | Tenant snapshot, device bundle, isolated restore and epoch fence | M11 | Export encrypted local recovery bundle; cloud backup/restore online |
-| Import/export | CSV item/party import, dry run, explicit opening imports | M11 | Export cached data with coverage; imports post online |
-| Quotes/orders | Non-posting documents and partial conversion | M12 | Draft only; issue/convert online in v1 |
-| Warehouses | Locations, dispatch/receive, in-transit stock | M12 | View last known quantities; transfer online |
-| Install/update | PWA install help, safe app/schema updates | M06 basic; M10 full | Reopen installed app after prior online installation |
-| Commercial SaaS | Plans, subscriptions, platform roles and device limits | Optional M14 | Defined business continuity policy required before enabling |
+| Business and identity | Sign-in, memberships, roles, device enrol/revoke | M02 | Server session and selected business required |
+| Catalogue | Items/services, categories, units, barcodes, archive | M04 | Server-authoritative CRUD |
+| Parties | Customers/suppliers, dual-role parties, contact data | M04 | Server-authoritative CRUD |
+| Opening balances | Stock, cash/bank, receivables/payables, equity | M04 | Preview and atomic online commit |
+| Sales | Items, discounts, taxes, cash/bank/credit, split payment | M05 | Online posting and immutable server receipt |
+| Purchases | Stock receipt, supplier bill, payable and payment | M07 | Online posting only |
+| Expenses | Dynamic categories, cash/bank payment | M07 | Online posting only |
+| Payments | Receive/pay, advances, partial allocations | M07 | Online limits and account locks |
+| Bank transfers | Transfer across internal money accounts | M07 | Online atomic two-sided posting |
+| Returns and refunds | Linked partial credits, restock and remaining limits | M08 | Online shared-limit checks |
+| Inventory | Immutable movements, counts, adjustments and valuation | M08 | Online posting and source-cost reconciliation |
+| Cash close | Count cash, variance reason and late entries | M09 | Online close watermark |
+| Reports | Sales, purchases, dues, stock, cash/bank, P&L, trial balance | M09 | Server-authoritative coverage and freshness |
+| Printing | A4, 80 mm, 58 mm, logo scaling, reprint | Basic M05; full M10 | Server-saved document before print |
+| Multi-user access | Shared business data and concurrent posting | M06 online transition | Real PostgreSQL and two-browser evidence |
+| Backup/recovery | Tenant backup, isolated restore and legacy device evidence | M11 | Cloud backup; encrypted local export only for old issued work |
+| Import/export | CSV item/party import, dry run, explicit opening imports | M11 | Online validation and commit |
+| Quotes/orders | Non-posting documents and partial conversion | M12 | Online issue and conversion |
+| Warehouses | Locations, dispatch/receive and in-transit stock | M12 | Online shared-state checks |
+| Web delivery | Responsive desktop/mobile browser UX | M06/M10 | Network required; no offline shell or install promise |
+| Commercial SaaS | Plans, subscriptions and platform roles | Optional M14 | Separate product decision |
 
 ## Common rules
 
-- “Offline support” means a tested local write path for the named action, not merely a service worker caching a page.
-- New/provisional parties are uploaded before documents referencing them; similar names or phone numbers are suggestions for review, never automatic merging.
-- Cash payment entered as part of an offline sale/purchase/expense is inside that command, with one atomic accounting effect. Do not also upload it as an independent payment command.
-- Offline stock is a last-known local view. The default proposed policy allows quantity deficits with warnings and valuation exceptions. Businesses requiring strict no-negative stock must use online-only issue until a separate reservation design exists.
-- Local-only changes never override canonical posted financial data. Current server authority can hold an issued local record for review; the original remains available.
-- No supported operation should imply successful external card/bank processing, tax filing, email or messaging while offline.
-- A fresh cloud report includes accepted cloud records, but may still lack other devices' pending work. Show last device contact and stale-device warnings.
+- No new bill may be issued from browser storage. The server assigns the final number and commits the document, journal, payments, stock and receipt in one transaction.
+- An interrupted response is retried with the same command and document IDs. The server returns the original result without duplicating effects.
+- Existing local issued work is evidence, not an automatically replayed source. Preserve its browser partition and encrypted export until an authorised reconciliation process is built and verified.
+- Reports come from accepted server records and explicitly state coverage; no local array is a business-wide report.
+- Printer, tax and external payment integrations require their own measured gates. Browser printing is not proof of hardware operation.
