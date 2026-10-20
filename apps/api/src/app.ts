@@ -20,7 +20,7 @@ import {
 import { type Prisma, type PrismaClient, ChangedCommandError, withBusinessChange, withTenantContext } from "@business/db";
 import { openingInput, prepareOpening, commitOpening, systemAccounts, OpeningConflict } from "./opening.js";
 import { provisionalPartyInput, acceptProvisionalParty, ProvisionalPartyConflict } from "./provisional-party.js";
-import { saleInput, createSaleDraft, postSale, SaleConflict } from "./sales.js";
+import { saleInput, offlineSaleInput, createSaleDraft, postSale, SaleConflict } from "./sales.js";
 import { hashPassword, verifyPassword } from "./auth/password.js";
 import {
   createSession,
@@ -39,6 +39,7 @@ import {
   enrollDevice,
   revokeDevice,
   issueOfflineLease,
+  generateLeaseSignature,
 } from "./devices/devices.js";
 
 export interface CreateAppOptions {
@@ -867,7 +868,7 @@ export function createApp(
         // Capture the floor before reading models: concurrent later changes can be replayed by pull.
         const syncHead = await tx.syncHead.findUnique({ where: { businessId: tenant.businessId } });
 
-        const [items, parties, categories, units, taxProfiles, conversions] = await Promise.all([
+        const [items, parties, categories, units, taxProfiles, conversions, sales, cashAccounts] = await Promise.all([
           tx.item.findMany({ where: { businessId: tenant.businessId, archivedAt: null },
             select: { id: true, kind: true, name: true, sku: true, barcode: true, salePrice: true,
               categoryId: true, baseUnitId: true, taxProfileId: true, version: true } }),
@@ -881,6 +882,13 @@ export function createApp(
             select: { id: true, name: true, rate: true, mode: true, version: true } }),
           tx.itemUnitConversion.findMany({ where: { businessId: tenant.businessId, archivedAt: null },
             select: { id: true, itemId: true, unitId: true, factor: true, version: true } }),
+          tx.saleDocument.findMany({ where: { businessId: tenant.businessId, status: "Posted",
+            ...(tenant.membership.locationId && tenant.membership.role !== "Owner"
+              ? { locationId: tenant.membership.locationId } : {}) },
+            select: { id: true, number: true, locationId: true, partyId: true, businessDate: true,
+              total: true, paid: true, due: true, postedAt: true, status: true } }),
+          tx.account.findMany({ where: { businessId: tenant.businessId, archivedAt: null, kind: "Cash" },
+            select: { id: true, name: true, kind: true } }),
         ]);
         const accountSetup = ["Owner", "Accountant"].includes(tenant.membership.role) ? {
           accounts: await tx.account.findMany({ where: { businessId: tenant.businessId, archivedAt: null },
@@ -891,7 +899,7 @@ export function createApp(
         } : null;
         return { device: d, business: b, locations: locs, existingLease: l,
           syncCursor: (syncHead?.committedCursor ?? 0n).toString(),
-          catalogue: { items, parties, categories, units, taxProfiles, conversions, accountSetup } };
+          catalogue: { items, parties, categories, units, taxProfiles, conversions, sales, cashAccounts, accountSetup } };
       },
     );
 
@@ -950,6 +958,7 @@ export function createApp(
         locationId: device.locationId,
         deviceName: device.deviceName,
         numberPrefix: device.numberPrefix,
+        saleSequence: device.saleSequence.toString(),
         status: device.status,
         enrolledAt: device.enrolledAt.toISOString(),
         revokedAt: device.revokedAt ? device.revokedAt.toISOString() : null,
@@ -1001,6 +1010,8 @@ export function createApp(
       if (after > committedCursor) return { invalidCursor: true };
       const batches = await tx.changeBatch.findMany({ where: { businessId: tenant.businessId,
         datasetEpoch: epoch, cursor: { gt: after } }, orderBy: { cursor: "asc" }, take: limit });
+      if (after < committedCursor && (!batches.length || batches[0].cursor !== after + 1n))
+        return { expiredCursor: true, committedCursor: committedCursor.toString() };
       const privileged = ["Owner", "Accountant"].includes(tenant.membership.role);
       const changes = [];
       for (const batch of batches) {
@@ -1015,9 +1026,23 @@ export function createApp(
           changes.push({ cursor: batch.cursor.toString(), action, row: { accounts: rows } });
           continue;
         }
+        // Financial change batches carry source identity rather than the draft
+        // action. Expose only a location-scoped receipt summary here: the saved
+        // snapshot includes private cost and must not enter a cashier cache.
+        const sourceEventId = typeof payload.sourceEventId === "string" ? payload.sourceEventId : null;
+        if (!action && sourceEventId) {
+          const sale = await tx.saleDocument.findFirst({ where: { businessId: tenant.businessId,
+            sourceEventId, status: "Posted",
+            ...(tenant.membership.locationId && tenant.membership.role !== "Owner"
+              ? { locationId: tenant.membership.locationId } : {}) },
+            select: { id: true, number: true, locationId: true, partyId: true, businessDate: true,
+              total: true, paid: true, due: true, postedAt: true, status: true } });
+          if (sale) changes.push({ cursor: batch.cursor.toString(), action: "sale.post", row: sale });
+          continue;
+        }
         if (!id) continue;
         const group = action.split(".")[0];
-        if (["account", "expense_category"].includes(group) && !privileged) continue;
+        if (group === "expense_category" && !privileged) continue;
         const where = { id, businessId: tenant.businessId };
         let row: Record<string, unknown> | null = null;
         if (group === "item") row = await tx.item.findFirst({ where,
@@ -1033,19 +1058,23 @@ export function createApp(
           select: { id: true, name: true, rate: true, mode: true, version: true, archivedAt: true } });
         else if (group === "conversion") row = await tx.itemUnitConversion.findFirst({ where,
           select: { id: true, itemId: true, unitId: true, factor: true, version: true, archivedAt: true } });
-        else if (group === "account" && privileged) row = await tx.account.findFirst({ where,
+        else if (group === "account") row = privileged ? await tx.account.findFirst({ where,
           select: { id: true, code: true, name: true, kind: true, classification: true,
-            expenseCategoryId: true, version: true, archivedAt: true } });
+            expenseCategoryId: true, version: true, archivedAt: true } }) : await tx.account.findFirst({ where: { ...where, kind: "Cash" },
+          select: { id: true, name: true, kind: true, archivedAt: true } });
         else if (group === "expense_category" && privileged) row = await tx.expenseCategory.findFirst({ where,
           select: { id: true, name: true, version: true, archivedAt: true } });
         if (row) changes.push({ cursor: batch.cursor.toString(), action, row });
       }
       const nextCursor = (batches.at(-1)?.cursor ?? after).toString();
       return { datasetEpoch: epoch, fromCursor: afterCursor, nextCursor,
+        permissionVersion: tenant.membership.permissionVersion,
         committedCursor: committedCursor.toString(), hasMore: BigInt(nextCursor) < committedCursor, changes };
     });
     if (!result) return reply.code(403).send({ error: "Device is not enrolled for this membership" });
     if ("invalidCursor" in result) return reply.code(400).send({ error: "Cursor is ahead of this business" });
+    if ("expiredCursor" in result) return reply.code(410).send({ error: "Sync history is no longer continuous; resnapshot this device and preserve pending work",
+      code: "CURSOR_EXPIRED", committedCursor: result.committedCursor });
     return result;
   });
 
@@ -1099,6 +1128,63 @@ export function createApp(
     if (!id.success || !command.success) return reply.code(400).send({ error: "Invalid sale command" });
     try { return await postSale(requireDb(), ctx.businessId, ctx.userId, { id: id.data.id, ...command.data }); }
     catch (error) { if (error instanceof SaleConflict) return reply.code(409).send({ error: error.message }); throw error; }
+  });
+  app.post("/v1/sync/push/sale", async (request, reply) => {
+    const ctx = saleContext(request, reply, true);
+    if (!ctx) return;
+    const parsed = offlineSaleInput.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: "Unsupported or invalid offline command", code: "SCHEMA" });
+    const issued = parsed.data;
+    const client = requireDb();
+    const authority = await withTenantContext(client, ctx, async (tx) => {
+      const [business, lease, device, membership] = await Promise.all([
+        tx.business.findUniqueOrThrow({ where: { id: ctx.businessId } }),
+        tx.offlineLease.findFirst({ where: { id: issued.leaseId, businessId: ctx.businessId } }),
+        tx.deviceEnrollment.findFirst({ where: { id: issued.input.deviceEnrollmentId, businessId: ctx.businessId } }),
+        tx.membership.findFirst({ where: { id: ctx.membershipId, businessId: ctx.businessId } }),
+      ]);
+      return { business, lease, device, membership };
+    });
+    const { business, lease, device, membership } = authority;
+    const issuedAt = Date.parse(issued.issuedAt);
+    if (issued.datasetEpoch !== business.datasetEpoch) return reply.code(409).send({ error: "Business dataset changed; preserve issued receipt for review", code: "EPOCH" });
+    if (!lease || !device || !membership || device.status !== "Enrolled" ||
+      device.membershipId !== ctx.membershipId || device.locationId !== issued.input.locationId ||
+      (ctx.locationId && ctx.role !== "Owner" && ctx.locationId !== device.locationId) ||
+      lease.revokedAt || lease.deviceEnrollmentId !== device.id || lease.membershipId !== membership.id ||
+      lease.datasetEpoch !== business.datasetEpoch || lease.policyVersion !== issued.policyVersion ||
+      membership.permissionVersion !== issued.policyVersion)
+      return reply.code(409).send({ error: "Device or offline authority changed; preserve issued receipt for review", code: "AUTHORITY" });
+    const signature = generateLeaseSignature(leaseSecret, { businessId: ctx.businessId,
+      deviceEnrollmentId: device.id, membershipId: membership.id, datasetEpoch: business.datasetEpoch,
+      policyVersion: membership.permissionVersion, expiresAt: lease.expiresAt });
+    if (signature !== lease.signature || !Number.isFinite(issuedAt) ||
+      issuedAt < lease.issuedAt.getTime() - 5 * 60_000 || issuedAt >= lease.expiresAt.getTime() ||
+      issuedAt > Date.now() + 5 * 60_000)
+      return reply.code(409).send({ error: "Lease or issue time is invalid; preserve issued receipt for review", code: "LEASE" });
+    try {
+      await createSaleDraft(client, ctx.businessId, ctx.userId, ctx.membershipId, ctx.role, issued.input);
+      let sale;
+      for (let attempt = 0; attempt < 4; attempt++) {
+        try {
+          sale = await postSale(client, ctx.businessId, ctx.userId,
+            { id: issued.input.id, commandId: issued.input.commandId }, issued);
+          break;
+        } catch (error) {
+          if (!(error instanceof SaleConflict) || !error.message.startsWith("Business changed since calculation") || attempt === 3) throw error;
+        }
+      }
+      if (!sale) throw new SaleConflict("Concurrent posting needs a retry");
+      return { commandId: issued.input.commandId, sale };
+    } catch (error) {
+      if (error instanceof SaleConflict && error.message.startsWith("Business changed since calculation"))
+        return reply.code(503).send({ error: "Concurrent posting; retry the original issued command", code: "RETRY" });
+      if (error instanceof SaleConflict || error instanceof ChangedCommandError)
+        return reply.code(409).send({ error: error.message, code: "REVIEW" });
+      if (typeof error === "object" && error && "code" in error && error.code === "P2002")
+        return reply.code(409).send({ error: "Issued number or identity is already used; preserve for review", code: "NUMBER_CONFLICT" });
+      throw error;
+    }
   });
   app.get("/v1/sales/documents", async (request, reply) => {
     const ctx = saleContext(request, reply);
