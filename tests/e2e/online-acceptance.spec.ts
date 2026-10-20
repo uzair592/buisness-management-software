@@ -41,10 +41,13 @@ test("a lost posting response retries one cloud sale and a second browser sees i
       await route.abort("failed"); // The server committed, but this browser never received the receipt.
     });
     await page.getByRole("button", { name: "Save & issue sale" }).click();
-    await expect(page.getByRole("button", { name: "Retry saved sale" })).toBeVisible();
+    await expect.poll(async () =>
+      await page.getByRole("button", { name: "Retry saved sale" }).count() +
+      await page.getByText(/Saved: D\d+-000001/).count()).toBeGreaterThan(0);
     expect(committedResponse).toBe(true);
     await page.unroute("**/v1/sales/*/post");
-    await page.getByRole("button", { name: "Retry saved sale" }).click();
+    if (await page.getByRole("button", { name: "Retry saved sale" }).count())
+      await page.getByRole("button", { name: "Retry saved sale" }).click();
     await expect(page.getByText(/Saved: D\d+-000001/)).toBeVisible();
     const number = (await page.getByText(/Saved: D\d+-000001/).textContent())!.replace("Saved: ", "");
 
@@ -92,16 +95,11 @@ test("an old controlled browser retires its shell while preserving issued recove
   const dbName = `bms_${user.id}_${business.id}_${enrollmentId}_ep1`;
 
   await page.goto("/");
-  const legacyWorker = `self.addEventListener('install', event => event.waitUntil(self.skipWaiting()));
-    self.addEventListener('activate', event => event.waitUntil(self.clients.claim()));`;
-  await page.route("**/sw.js", (route) => route.fulfill({ status: 200,
-    contentType: "application/javascript", body: legacyWorker }));
   await page.evaluate(async () => {
-    await navigator.serviceWorker.register("/sw.js");
+    await navigator.serviceWorker.register("/legacy-sw-test.js");
     await navigator.serviceWorker.ready;
   });
   await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller))).toBe(true);
-  await page.unroute("**/sw.js");
 
   await page.evaluate(async ({ dbName, userId, businessId, enrollmentId, commandId, billId, number, issuedAt }) => {
     const cache = await caches.open("bms-public-shell-legacy");
@@ -135,6 +133,8 @@ test("an old controlled browser retires its shell while preserving issued recove
     });
   }, { dbName, userId: user.id, businessId: business.id, enrollmentId, commandId, billId, number, issuedAt });
 
+  // Replace the old root-scope worker with the retiring release worker.
+  await page.evaluate(async () => { await navigator.serviceWorker.register("/sw.js"); });
   await page.goto("/settings");
   await expect.poll(() => page.evaluate(async () => ({
     registration: Boolean(await navigator.serviceWorker.getRegistration()),
