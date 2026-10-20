@@ -163,7 +163,8 @@ test("an old controlled browser retires its shell while preserving issued recove
   const bytes = await (await import("node:fs/promises")).readFile(path!);
   expect(bytes.toString()).not.toContain(number);
   await page.getByLabel("File passphrase").fill("long recovery passphrase");
-  await page.getByLabel("Recovery file").setInputFiles({ name: "recovery.json",
+  await page.getByRole("region", { name: "Inspect recovery file" }).locator('input[type="file"]')
+    .setInputFiles({ name: "recovery.json",
     mimeType: "application/json", buffer: bytes });
   await expect(page.getByRole("region", { name: "Inspect recovery file" })).toContainText(number);
   await expect(page.getByRole("region", { name: "Inspect recovery file" })).toContainText("No commands were submitted");
