@@ -21,8 +21,8 @@ test("owner posts a transfer and reloads both account books", async ({ page }, t
   await page.setViewportSize({ width: 1366, height: 768 });
   await page.goto("/cash-bank");
   await expect(page.getByRole("heading", { name: "Transfers & account books" })).toBeVisible();
-  await page.getByLabel("From").selectOption({ label: "Till (Cash)" });
-  await page.getByLabel("To", { exact: true }).selectOption({ label: "Bank (Bank)" });
+  await page.getByRole("combobox", { name: "Source account" }).selectOption({ label: "Till (Cash)" });
+  await page.getByRole("combobox", { name: "Destination account" }).selectOption({ label: "Bank (Bank)" });
   await page.getByLabel("Transfer value", { exact: true }).fill("25.50");
   await page.getByLabel("Reference").fill("Daily deposit");
   let committedResponse = false;

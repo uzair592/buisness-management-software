@@ -76,9 +76,9 @@ export function MoneyTransferPanel({ accounts, businessId, csrfToken }: {
     {error && <p className="live-error" role="alert">{error}</p>}
     {notice && <p className="account-notice" role="status">{notice}</p>}
     <form className="account-inline-form" onSubmit={(event) => void submit(event)}>
-      <label>From<select className="input" required disabled={uncertain} value={form.sourceAccountId} onChange={(event) => update({ sourceAccountId: event.target.value })}>
+      <label>From<select aria-label="Source account" className="input" required disabled={uncertain} value={form.sourceAccountId} onChange={(event) => update({ sourceAccountId: event.target.value })}>
         <option value="">Choose…</option>{choices.map((account) => <option key={account.id} value={account.id}>{account.name} ({account.kind})</option>)}</select></label>
-      <label>To<select className="input" required disabled={uncertain} value={form.destinationAccountId} onChange={(event) => update({ destinationAccountId: event.target.value })}>
+      <label>To<select aria-label="Destination account" className="input" required disabled={uncertain} value={form.destinationAccountId} onChange={(event) => update({ destinationAccountId: event.target.value })}>
         <option value="">Choose…</option>{choices.filter((account) => account.id !== form.sourceAccountId).map((account) => <option key={account.id} value={account.id}>{account.name} ({account.kind})</option>)}</select></label>
       <label>Transfer value<input className="input" required disabled={uncertain} inputMode="decimal" pattern="(?!0+([.]0+)?$)[0-9]+([.][0-9]{1,2})?" value={form.amount} onChange={(event) => update({ amount: event.target.value })} /></label>
       <label>Reference<input className="input" required disabled={uncertain} maxLength={120} value={form.reference} onChange={(event) => update({ reference: event.target.value })} /></label>
