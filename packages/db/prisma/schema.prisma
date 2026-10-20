@@ -54,6 +54,7 @@ model Business {
   items                  Item[]
   parties                Party[]
   sales                  SaleDocument[]
+  moneyTransfers         MoneyTransfer[]
 
   @@map("businesses")
 }
@@ -198,6 +199,8 @@ model Account {
   expenseCategory ExpenseCategory? @relation(fields: [businessId, expenseCategoryId], references: [businessId, id], onDelete: Restrict)
   journalLines   JournalLine[]
   salePayments   SalePayment[]
+  transfersOut   MoneyTransfer[] @relation("TransferSource")
+  transfersIn    MoneyTransfer[] @relation("TransferDestination")
 
   @@unique([businessId, id])
   @@unique([businessId, code])
@@ -353,10 +356,34 @@ model SourceEvent {
   changeBatches       ChangeBatch[]
   openingBatches      OpeningBatch[]
   saleDocuments       SaleDocument[]
+  moneyTransfers      MoneyTransfer[]
 
   @@unique([businessId, id])
   @@unique([businessId, commandId, effectKind])
   @@map("source_events")
+}
+
+model MoneyTransfer {
+  id                   String      @id @db.Uuid
+  businessId           String      @map("business_id") @db.Uuid
+  commandId            String      @map("command_id") @db.Uuid
+  sourceEventId        String      @map("source_event_id") @db.Uuid
+  sourceAccountId      String      @map("source_account_id") @db.Uuid
+  destinationAccountId String      @map("destination_account_id") @db.Uuid
+  amount               Decimal     @db.Decimal(38, 2)
+  reference            String      @db.VarChar(120)
+  businessDate         DateTime    @map("business_date") @db.Date
+  createdAt            DateTime    @default(now()) @map("created_at") @db.Timestamptz
+  business             Business    @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  sourceEvent          SourceEvent @relation(fields: [businessId, sourceEventId], references: [businessId, id], onDelete: Restrict)
+  sourceAccount        Account     @relation("TransferSource", fields: [businessId, sourceAccountId], references: [businessId, id], onDelete: Restrict)
+  destinationAccount   Account     @relation("TransferDestination", fields: [businessId, destinationAccountId], references: [businessId, id], onDelete: Restrict)
+
+  @@unique([businessId, id])
+  @@unique([businessId, commandId])
+  @@unique([businessId, sourceEventId])
+  @@index([businessId, businessDate, id])
+  @@map("money_transfers")
 }
 
 model JournalEntry {

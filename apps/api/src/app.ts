@@ -17,10 +17,11 @@ import {
   ROLE_CAPABILITIES,
   type Role,
 } from "@business/contracts";
-import { type Prisma, type PrismaClient, ChangedCommandError, withBusinessChange, withTenantContext } from "@business/db";
+import { Prisma, type PrismaClient, ChangedCommandError, withBusinessChange, withTenantContext } from "@business/db";
 import { openingInput, prepareOpening, commitOpening, systemAccounts, OpeningConflict } from "./opening.js";
 import { provisionalPartyInput, acceptProvisionalParty, ProvisionalPartyConflict } from "./provisional-party.js";
 import { saleInput, createSaleDraft, postSale, SaleConflict } from "./sales.js";
+import { transferInput, postTransfer, TransferConflict } from "./transfers.js";
 import { hashPassword, verifyPassword } from "./auth/password.js";
 import {
   createSession,
@@ -1538,6 +1539,50 @@ export function createApp(
       accounts: await tx.account.findMany({ where: { businessId: tenant.businessId, archivedAt: null }, orderBy: { code: "asc" } }),
       expenseCategories: await tx.expenseCategory.findMany({ where: { businessId: tenant.businessId, archivedAt: null }, orderBy: { name: "asc" } }),
     }));
+  });
+
+  app.post("/v1/accounts/transfers", async (request, reply) => {
+    const tenant = accountContext(request, reply, true);
+    if (!tenant) return;
+    const parsed = transferInput.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: "Invalid transfer", details: parsed.error.flatten() });
+    try { return reply.code(201).send(await postTransfer(requireDb(), tenant.businessId, tenant.userId, parsed.data)); }
+    catch (error) {
+      if (error instanceof TransferConflict || error instanceof ChangedCommandError)
+        return reply.code(409).send({ error: error.message });
+      throw error;
+    }
+  });
+
+  app.get("/v1/accounts/books/:id", async (request, reply) => {
+    const tenant = accountContext(request, reply, false);
+    if (!tenant) return;
+    const params = z.object({ id: z.uuid() }).safeParse(request.params);
+    const query = z.object({ page: z.coerce.number().int().min(1).max(10000).default(1) }).safeParse(request.query);
+    if (!params.success || !query.success) return reply.code(400).send({ error: "Invalid account book request" });
+    const result = await withTenantContext(requireDb(), tenant, async (tx) => {
+      const account = await tx.account.findFirst({ where: { id: params.data.id, businessId: tenant.businessId,
+        kind: { in: ["Cash", "Bank"] } }, select: { id: true, name: true, kind: true } });
+      if (!account) return null;
+      const [totals, lines] = await Promise.all([
+        tx.journalLine.aggregate({ where: { businessId: tenant.businessId, accountId: account.id },
+          _sum: { debit: true, credit: true } }),
+        tx.journalLine.findMany({ where: { businessId: tenant.businessId, accountId: account.id },
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }], skip: (query.data.page - 1) * 25, take: 26,
+          include: { journalEntry: { include: { sourceEvent: { include: { moneyTransfers: {
+            select: { id: true, reference: true, sourceAccount: { select: { name: true } },
+              destinationAccount: { select: { name: true } } },
+          } } } } } } }),
+      ]);
+      return { account, page: query.data.page, hasMore: lines.length > 25,
+        balance: (totals._sum.debit ?? new Prisma.Decimal(0)).minus(totals._sum.credit ?? new Prisma.Decimal(0)).toFixed(2),
+        rows: lines.slice(0, 25).map((line) => ({ id: line.id, businessDate: line.journalEntry.businessDate,
+          postingKind: line.journalEntry.postingKind, debit: line.debit, credit: line.credit,
+          transfer: line.journalEntry.sourceEvent.moneyTransfers[0] ?? null })),
+      };
+    });
+    if (!result) return reply.code(404).send({ error: "Account book not found" });
+    return result;
   });
 
   app.post("/v1/accounts/expense-categories", async (request, reply) => {

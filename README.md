@@ -2,7 +2,7 @@
 
 A web-based business-management product inspired by Vyapar's ease of use: fast online billing, connected inventory and accounts, and shared access across devices.
 
-**Current status:** Online sale, identity foundations and the online web cutover are merged. M06 acceptance is still open for legacy browser recovery and multi-browser proof; purchases, returns, reports and release gates remain open. An explicit sample workspace can be explored without creating business records. See [PROJECT_STATUS.md](PROJECT_STATUS.md) for actual acceptance evidence. A server connection is required for real billing; older browser-issued bills remain recoverable for reconciliation.
+**Current status:** Online sale, identity foundations and online cutover browser acceptance are merged. M06 deployment remains blocked on real legacy browser-issued work inventory and reconciliation. M07 money transfer/account book work is in review; purchases, returns, reports and release gates remain open. An explicit sample workspace can be explored without creating business records. See [PROJECT_STATUS.md](PROJECT_STATUS.md) for actual acceptance evidence. A server connection is required for real billing; older browser-issued bills remain recoverable for reconciliation.
 
 ## Start here
 
