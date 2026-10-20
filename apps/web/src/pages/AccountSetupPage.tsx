@@ -3,6 +3,7 @@ import { EmptyState, Panel, Table } from "@business/ui";
 import { useAuth } from "../context/AuthContext";
 import { usePreview } from "../preview/PreviewProvider";
 import { TrySample } from "../components/PreviewActions";
+import { MoneyTransferPanel } from "./MoneyTransferPanel";
 
 type Account = { id: string; code: string; name: string; kind: string; version: number; expenseCategoryId: string | null };
 type Choice = { id: string; name: string; kind?: string; isCustomer?: boolean; isSupplier?: boolean };
@@ -188,6 +189,7 @@ export function AccountSetupPage() {
         </form>
         <form className="account-inline-form" onSubmit={(event) => void createCategory(event)}><label>New expense category<input className="input" required maxLength={120} value={categoryName} onChange={(e) => setCategoryName(e.target.value)} placeholder="e.g. Utilities" /></label><button className="btn-secondary" disabled={busy}>Add category</button></form>
       </Panel>
+      <MoneyTransferPanel accounts={accounts} businessId={auth.selectedBusinessId!} csrfToken={auth.csrfToken} />
       <Panel><div className="account-section-head"><div><h2>Opening balances</h2><p>One opening batch per business. Preview exact totals before posting.</p></div><span className="account-state">{posted ? "Posted" : "Not posted"}</span></div>
         {!(["OPEN_INVENTORY", "OPEN_RECEIVABLE", "OPEN_PAYABLE", "OPEN_EQUITY", "SALE_REVENUE", "SALE_TAX", "SALE_COGS"].every((code) => accounts.some((a) => a.code === code))) &&
           <div className="account-system-prompt"><p>Initialize the inventory, dues, equity and sales ledger accounts before billing.</p><button className="btn-secondary" disabled={busy} onClick={() => void perform(async () => { await api("/v1/accounts/system", {}); setNotice("Posting accounts initialized."); })}>Initialize posting accounts</button></div>}
