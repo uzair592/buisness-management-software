@@ -2,6 +2,8 @@
 
 This is a planning repository for a new business application. Read README.md, PROJECT_STATUS.md, docs/planning/10-delivery-roadmap.md, and prompts/00-agent-contract.md before implementation. Then read the selected milestone prompt and its referenced specifications.
 
+Current product scope (2026-10-20): online browser application. Earlier offline issue/sync clauses are historical safeguards for existing browser-issued records, not instructions to create new offline workflows. Follow the online M06 prompt and preserve legacy recovery evidence.
+
 ## Scope and working method
 
 - Implement one selected milestone per branch/PR. Do not interpret the full roadmap as permission to build everything at once.

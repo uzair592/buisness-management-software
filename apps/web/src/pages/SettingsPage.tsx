@@ -6,15 +6,9 @@ import {
   type LocationSummary,
 } from "@business/contracts";
 import {
-  getLocalDatabase,
-  bootstrapLocalIdentity,
-  readCachedIdentity,
-  isOfflineLeaseValid,
   closeActiveLocalDb,
-  installCatalogueSnapshot,
   PartitionedLocalDatabase,
 } from "../db/index";
-import { pullCatalogueChanges } from "../db/offline-sync";
 import { exportPendingRecovery, inspectPendingRecovery, listPendingPartitions, type PendingPartitionSummary } from "../db/recovery";
 
 export function SettingsPage() {
@@ -67,12 +61,7 @@ export function SettingsPage() {
     }>
   >([]);
 
-  // Local IndexedDB bootstrap status
-  const [localCache, setLocalCache] = useState<Awaited<
-    ReturnType<typeof readCachedIdentity>
-  > | null>(null);
-  const [bootstrapStatus, setBootstrapStatus] = useState<string | null>(null);
-  const [syncBusy, setSyncBusy] = useState(false);
+  // Existing local issued work remains accessible during the online cutover.
   const [pendingPartitions, setPendingPartitions] = useState<PendingPartitionSummary[]>([]);
   const [recoveryPassphrase, setRecoveryPassphrase] = useState("");
   const [recoveryConfirm, setRecoveryConfirm] = useState("");
@@ -117,31 +106,7 @@ export function SettingsPage() {
     } catch (cause) { setInspectionError(cause instanceof Error ? cause.message : "Recovery inspection failed"); }
   }
 
-  // Finding 4: Deliberately bind browser to a device instead of blindly picking the first enrolled device
-  const [boundDeviceId, setBoundDeviceId] = useState<string | null>(() => {
-    if (typeof window !== "undefined" && auth.selectedBusinessId) {
-      return localStorage.getItem(`bms_device_binding_${auth.selectedBusinessId}`);
-    }
-    return null;
-  });
-
   const isOwner = auth.activeMembership?.role === "Owner";
-
-  // Synchronize bound device key when selected business changes
-  useEffect(() => {
-    if (typeof window !== "undefined" && auth.selectedBusinessId) {
-      setBoundDeviceId(localStorage.getItem(`bms_device_binding_${auth.selectedBusinessId}`));
-    } else {
-      setBoundDeviceId(null);
-    }
-  }, [auth.selectedBusinessId]);
-
-  function bindDeviceToBrowser(deviceId: string) {
-    if (typeof window !== "undefined" && auth.selectedBusinessId) {
-      localStorage.setItem(`bms_device_binding_${auth.selectedBusinessId}`, deviceId);
-      setBoundDeviceId(deviceId);
-    }
-  }
 
   // Clear stale UI state and close local database partition when business/user changes or logs out
   useEffect(() => {
@@ -149,8 +114,6 @@ export function SettingsPage() {
       setDevices([]);
       setLocations([]);
       setSessions([]);
-      setLocalCache(null);
-      setBootstrapStatus(null);
       closeActiveLocalDb();
     }
   }, [auth.authenticated, auth.selectedBusinessId]);
@@ -167,7 +130,7 @@ export function SettingsPage() {
           fetch("/v1/auth/sessions", { credentials: "include" }),
         ]);
 
-        // If authority rejected, close local partition and clear state
+        // An authorization failure must not erase older issued browser records.
         if (
           locRes.status === 401 ||
           locRes.status === 403 ||
@@ -175,12 +138,8 @@ export function SettingsPage() {
           devRes.status === 403
         ) {
           closeActiveLocalDb();
-          setLocalCache(null);
           setDevices([]);
           setLocations([]);
-          if (boundDeviceId && auth.selectedBusinessId) {
-            localStorage.removeItem(`bms_verified_bootstrap_${auth.selectedBusinessId}_${boundDeviceId}`);
-          }
           return;
         }
 
@@ -199,54 +158,11 @@ export function SettingsPage() {
           setSessions(await sessRes.json());
         }
       } catch {
-        // network/offline handling
+        // Network errors are shown by the affected online action.
       }
     })();
   }, [auth.authenticated, auth.selectedBusinessId]);
 
-  // Load cached local IndexedDB if verified bootstrap metadata is present for the explicitly bound device
-  useEffect(() => {
-    if (!auth.authenticated || !auth.user || !auth.selectedBusinessId || !boundDeviceId) {
-      return;
-    }
-    const boundDevice = devices.find((d) => d.id === boundDeviceId && d.status === "Enrolled");
-    if (!boundDevice) return;
-
-    // Require verified bootstrap metadata before opening the scoped partition
-    // Never guess the dataset epoch or assume authority without verified metadata
-    const metaKey = `bms_verified_bootstrap_${auth.selectedBusinessId}_${boundDevice.id}`;
-    const storedMetaRaw = localStorage.getItem(metaKey);
-    if (!storedMetaRaw) {
-      return;
-    }
-
-    let storedMeta: { userId?: string; businessId?: string; enrollmentId?: string; datasetEpoch?: number };
-    try {
-      storedMeta = JSON.parse(storedMetaRaw);
-    } catch {
-      return;
-    }
-
-    if (
-      storedMeta.userId !== auth.user.id ||
-      storedMeta.businessId !== auth.selectedBusinessId ||
-      storedMeta.enrollmentId !== boundDevice.id ||
-      typeof storedMeta.datasetEpoch !== "number"
-    ) {
-      return;
-    }
-
-    const db = getLocalDatabase({
-      userId: auth.user.id,
-      businessId: auth.selectedBusinessId,
-      enrollmentId: boundDevice.id,
-      datasetEpoch: storedMeta.datasetEpoch,
-    });
-
-    void readCachedIdentity(db).then((data) => {
-      if (data.business) setLocalCache(data);
-    });
-  }, [auth.authenticated, auth.user, auth.selectedBusinessId, boundDeviceId, devices]);
 
   async function handleLogin(e: FormEvent) {
     e.preventDefault();
@@ -333,9 +249,6 @@ export function SettingsPage() {
       } else {
         setNewDeviceName("");
         setNewDevicePrefix("");
-        if (!boundDeviceId) {
-          bindDeviceToBrowser(data.id);
-        }
         // Reload devices
         const devRes = await fetch("/v1/devices", { credentials: "include" });
         if (devRes.ok) setDevices(await devRes.json());
@@ -348,7 +261,7 @@ export function SettingsPage() {
   }
 
   async function handleRevokeDevice(deviceEnrollmentId: string) {
-    if (!confirm("Are you sure you want to revoke this device? Offline authority will be cancelled.")) {
+    if (!confirm("Revoke this device? It can no longer be used for online billing. Preserve any older browser-issued bills for review.")) {
       return;
     }
 
@@ -368,77 +281,6 @@ export function SettingsPage() {
     } catch {
       // network error
     }
-  }
-
-  async function handleBootstrapLocal(device: DeviceEnrollment) {
-    setBootstrapStatus("Downloading permitted identity bootstrap...");
-    bindDeviceToBrowser(device.id);
-    try {
-      const res = await fetch(`/v1/sync/bootstrap?deviceEnrollmentId=${device.id}`, {
-        credentials: "include",
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        setBootstrapStatus(`Bootstrap failed: ${err.error || "Access denied"}`);
-        if (res.status === 401 || res.status === 403) {
-          closeActiveLocalDb();
-          setLocalCache(null);
-          if (auth.selectedBusinessId) {
-            localStorage.removeItem(`bms_verified_bootstrap_${auth.selectedBusinessId}_${device.id}`);
-          }
-        }
-        return;
-      }
-
-      const bootstrapData = await res.json();
-
-      const db = getLocalDatabase({
-        userId: auth.user!.id,
-        businessId: auth.selectedBusinessId!,
-        enrollmentId: device.id,
-        datasetEpoch: bootstrapData.business.datasetEpoch,
-      });
-
-      if (bootstrapData.business.id !== auth.selectedBusinessId || bootstrapData.device.id !== device.id ||
-        bootstrapData.membership.id !== device.membershipId) throw new Error("Bootstrap identity scope changed");
-      await bootstrapLocalIdentity(db, bootstrapData);
-      await installCatalogueSnapshot(db, bootstrapData, ["Owner", "Accountant"].includes(bootstrapData.membership.role));
-      await db.identity.put({ key: "user", value: auth.user });
-      await refreshPendingPartitions();
-      const cached = await readCachedIdentity(db);
-      setLocalCache(cached);
-
-      localStorage.setItem(
-        `bms_verified_bootstrap_${auth.selectedBusinessId}_${device.id}`,
-        JSON.stringify({
-          userId: auth.user!.id,
-          businessId: auth.selectedBusinessId!,
-          enrollmentId: device.id,
-          datasetEpoch: bootstrapData.business.datasetEpoch,
-          bootstrappedAt: new Date().toISOString(),
-        }),
-      );
-      localStorage.setItem("bms_last_bootstrap", JSON.stringify({ userId: auth.user!.id,
-        businessId: auth.selectedBusinessId!, enrollmentId: device.id,
-        datasetEpoch: bootstrapData.business.datasetEpoch }));
-
-      setBootstrapStatus("Permitted catalogue cached. Cash bills can be saved on this device while disconnected; cloud acceptance follows reconnect.");
-    } catch (err: unknown) {
-      setBootstrapStatus(`Bootstrap error: ${err instanceof Error ? err.message : "Unknown error"}`);
-    }
-  }
-
-  async function handlePullCatalogue() {
-    if (!auth.user || !auth.selectedBusinessId || !boundDeviceId || !localCache?.business) return;
-    setSyncBusy(true);
-    try {
-      const db = getLocalDatabase({ userId: auth.user.id, businessId: auth.selectedBusinessId,
-        enrollmentId: boundDeviceId, datasetEpoch: localCache.business.datasetEpoch });
-      const cursor = await pullCatalogueChanges(db);
-      setBootstrapStatus(`Catalogue updated through cursor ${cursor}.`);
-    } catch (error) {
-      setBootstrapStatus(error instanceof Error ? error.message : "Could not update catalogue");
-    } finally { setSyncBusy(false); }
   }
 
   async function handleRevokeSession(sessionId: string) {
@@ -691,7 +533,7 @@ export function SettingsPage() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight text-gray-900">Settings</h1>
         <p className="text-sm text-gray-500 mt-1">
-          Account, business isolation, device enrollment, and local offline partition.
+          Account, business access, devices and recovery of older browser-issued bills.
         </p>
       </div>
 
@@ -752,12 +594,12 @@ export function SettingsPage() {
         </div>
       </div>
 
-      {/* Device Enrollment & Offline Leases */}
+      {/* Devices remain necessary for server-issued invoice numbers. */}
       <div className="bg-white p-6 rounded-lg border shadow-sm space-y-6">
         <div>
-          <h2 className="text-base font-bold text-gray-900">Enrolled Devices & Offline Leases</h2>
+          <h2 className="text-base font-bold text-gray-900">Enrolled Devices</h2>
           <p className="text-xs text-gray-500 mt-1">
-            Owner-controlled device enrollment allocates a never-reused numbering prefix and bounded offline lease.
+            Each device has its own invoice number prefix. Billing requires a live server connection.
           </p>
         </div>
 
@@ -874,24 +716,6 @@ export function SettingsPage() {
                     <td className="p-2 space-x-2">
                       {dev.status === "Enrolled" && (
                         <>
-                          {boundDeviceId === dev.id ? (
-                            <span className="inline-block px-2 py-0.5 rounded text-[11px] font-medium bg-blue-100 text-blue-800 border border-blue-200">
-                              Bound Browser
-                            </span>
-                          ) : (
-                            <Button
-                              onClick={() => bindDeviceToBrowser(dev.id)}
-                              className="btn-secondary text-[11px] py-1 px-2"
-                            >
-                              Bind Browser
-                            </Button>
-                          )}
-                          <Button
-                            onClick={() => void handleBootstrapLocal(dev)}
-                            className="btn-secondary text-[11px] py-1 px-2"
-                          >
-                            Bootstrap IndexedDB
-                          </Button>
                           {isOwner && (
                             <Button
                               onClick={() => void handleRevokeDevice(dev.id)}
@@ -910,47 +734,9 @@ export function SettingsPage() {
           </table>
         </div>
 
-        {/* Bootstrap status */}
-        {bootstrapStatus && (
-          <div className="p-3 bg-blue-50 border border-blue-200 text-xs text-blue-900 rounded">
-            {bootstrapStatus}
-          </div>
-        )}
-
-        {/* Cached Partition Overview */}
-        {localCache && (
-          <div className="p-3 bg-gray-50 border rounded text-xs space-y-1">
-            <Button onClick={() => void handlePullCatalogue()} disabled={syncBusy || !boundDeviceId}
-              className="btn-secondary text-xs py-1 px-2">
-              {syncBusy ? "Updating catalogue…" : "Update catalogue"}
-            </Button>
-            <p className="font-semibold text-gray-700">IndexedDB Partition Verified:</p>
-            <p>
-              <b>Business:</b> {localCache.business?.name} (Epoch {localCache.business?.datasetEpoch})
-            </p>
-            <p>
-              <b>Permitted Locations:</b> {localCache.locations.length}
-            </p>
-            <p>
-              <b>Offline Lease:</b>{" "}
-              {localCache.lease ? (
-                isOfflineLeaseValid(localCache.lease) ? (
-                  <span className="text-green-700 font-medium">Valid (72h lease signed)</span>
-                ) : (
-                  <span className="text-red-600 font-medium">Expired / Revoked</span>
-                )
-              ) : (
-                "None"
-              )}
-            </p>
-            <p className="text-[11px] text-gray-400">
-              Zero passwords, password hashes, or session tokens stored locally.
-            </p>
-          </div>
-        )}
         {pendingPartitions.length > 0 && <section aria-label="Saved issued work" className="p-4 bg-amber-50 border border-amber-200 rounded-lg space-y-3">
           <h3 className="font-bold">Issued work saved in this browser</h3>
-          <p className="text-sm">These bills are still pending or held. Older dataset epochs remain separate for review; do not clear browser data.</p>
+          <p className="text-sm">These are older device-issued bills. Online-only billing does not upload them automatically. Export each encrypted recovery file and keep this browser profile for authorised reconciliation; do not issue a second sale for the same transaction.</p>
           <ul className="text-sm list-disc pl-5">{pendingPartitions.map((partition) =>
             <li key={partition.name}>Epoch {partition.datasetEpoch} · Device {partition.enrollmentId} · {partition.count} bill(s)
               <button type="button" className="btn-ghost" onClick={() => void downloadPartitionRecovery(partition)}>Download encrypted recovery</button>

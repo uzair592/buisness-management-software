@@ -79,7 +79,6 @@ for (const [width, height] of [
       "Expenses",
       "Reports",
       "Settings",
-      "Sync & Backup",
     ]) {
       if (width < 1024)
         await page.getByRole("button", { name: "Open navigation" }).click();

@@ -1,5 +1,7 @@
 # Offline and multi-device protocol
 
+> Historical specification: the product switched to online-only web delivery on 2026-10-20. No new offline issue or command upload is supported. This document explains prior implementation and the legacy records that must be preserved for authorised reconciliation. Follow the [current roadmap](10-delivery-roadmap.md) for new work.
+
 ## Guarantees and limits
 
 Use a local database as the device's working store and PostgreSQL as the authority for accepted shared records. Support at-least-once command delivery with exactly-once business effects enforced by transaction boundaries and unique keys. Do not claim exactly-once network delivery.

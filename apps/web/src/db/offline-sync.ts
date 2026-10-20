@@ -24,7 +24,7 @@ export async function pushQueuedSales(db: PartitionedLocalDatabase, csrfToken: s
         }
         await db.pending.update(record.commandId, { state: "acknowledged", result, reason: undefined });
         summary.accepted++;
-      } else if ([400, 403, 409].includes(response.status)) {
+      } else if ([400, 403, 409, 410].includes(response.status)) {
         const problem = await response.json() as { error?: string; code?: string };
         await db.pending.update(record.commandId, { state: "held", reason: `${problem.code ?? "REVIEW"}: ${problem.error ?? "Owner review required"}` });
         summary.held++;

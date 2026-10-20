@@ -14,7 +14,6 @@ import { AuthProvider } from "./context/AuthContext";
 const planned = [
   ["expenses", "Expenses", "Categories and cash expenses"],
   ["reports", "Reports", "Business reports with explicit data coverage"],
-  ["sync", "Sync & Backup", "Offline transactions, device sync and recovery"],
 ];
 
 export default function App() {
@@ -40,6 +39,7 @@ export default function App() {
               element={<DirectoryPage key="items" type="items" />}
             />
             <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/sync" element={<Navigate to="/settings" replace />} />
             <Route path="/cash-bank" element={<AccountSetupPage />} />
             {planned.map(([path, title, description]) => (
               <Route

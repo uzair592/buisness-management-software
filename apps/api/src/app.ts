@@ -20,7 +20,7 @@ import {
 import { type Prisma, type PrismaClient, ChangedCommandError, withBusinessChange, withTenantContext } from "@business/db";
 import { openingInput, prepareOpening, commitOpening, systemAccounts, OpeningConflict } from "./opening.js";
 import { provisionalPartyInput, acceptProvisionalParty, ProvisionalPartyConflict } from "./provisional-party.js";
-import { saleInput, offlineSaleInput, createSaleDraft, postSale, SaleConflict } from "./sales.js";
+import { saleInput, createSaleDraft, postSale, SaleConflict } from "./sales.js";
 import { hashPassword, verifyPassword } from "./auth/password.js";
 import {
   createSession,
@@ -39,7 +39,6 @@ import {
   enrollDevice,
   revokeDevice,
   issueOfflineLease,
-  generateLeaseSignature,
 } from "./devices/devices.js";
 
 export interface CreateAppOptions {
@@ -1132,59 +1131,8 @@ export function createApp(
   app.post("/v1/sync/push/sale", async (request, reply) => {
     const ctx = saleContext(request, reply, true);
     if (!ctx) return;
-    const parsed = offlineSaleInput.safeParse(request.body);
-    if (!parsed.success) return reply.code(400).send({ error: "Unsupported or invalid offline command", code: "SCHEMA" });
-    const issued = parsed.data;
-    const client = requireDb();
-    const authority = await withTenantContext(client, ctx, async (tx) => {
-      const [business, lease, device, membership] = await Promise.all([
-        tx.business.findUniqueOrThrow({ where: { id: ctx.businessId } }),
-        tx.offlineLease.findFirst({ where: { id: issued.leaseId, businessId: ctx.businessId } }),
-        tx.deviceEnrollment.findFirst({ where: { id: issued.input.deviceEnrollmentId, businessId: ctx.businessId } }),
-        tx.membership.findFirst({ where: { id: ctx.membershipId, businessId: ctx.businessId } }),
-      ]);
-      return { business, lease, device, membership };
-    });
-    const { business, lease, device, membership } = authority;
-    const issuedAt = Date.parse(issued.issuedAt);
-    if (issued.datasetEpoch !== business.datasetEpoch) return reply.code(409).send({ error: "Business dataset changed; preserve issued receipt for review", code: "EPOCH" });
-    if (!lease || !device || !membership || device.status !== "Enrolled" ||
-      device.membershipId !== ctx.membershipId || device.locationId !== issued.input.locationId ||
-      (ctx.locationId && ctx.role !== "Owner" && ctx.locationId !== device.locationId) ||
-      lease.revokedAt || lease.deviceEnrollmentId !== device.id || lease.membershipId !== membership.id ||
-      lease.datasetEpoch !== business.datasetEpoch || lease.policyVersion !== issued.policyVersion ||
-      membership.permissionVersion !== issued.policyVersion)
-      return reply.code(409).send({ error: "Device or offline authority changed; preserve issued receipt for review", code: "AUTHORITY" });
-    const signature = generateLeaseSignature(leaseSecret, { businessId: ctx.businessId,
-      deviceEnrollmentId: device.id, membershipId: membership.id, datasetEpoch: business.datasetEpoch,
-      policyVersion: membership.permissionVersion, expiresAt: lease.expiresAt });
-    if (signature !== lease.signature || !Number.isFinite(issuedAt) ||
-      issuedAt < lease.issuedAt.getTime() - 5 * 60_000 || issuedAt >= lease.expiresAt.getTime() ||
-      issuedAt > Date.now() + 5 * 60_000)
-      return reply.code(409).send({ error: "Lease or issue time is invalid; preserve issued receipt for review", code: "LEASE" });
-    try {
-      await createSaleDraft(client, ctx.businessId, ctx.userId, ctx.membershipId, ctx.role, issued.input);
-      let sale;
-      for (let attempt = 0; attempt < 4; attempt++) {
-        try {
-          sale = await postSale(client, ctx.businessId, ctx.userId,
-            { id: issued.input.id, commandId: issued.input.commandId }, issued);
-          break;
-        } catch (error) {
-          if (!(error instanceof SaleConflict) || !error.message.startsWith("Business changed since calculation") || attempt === 3) throw error;
-        }
-      }
-      if (!sale) throw new SaleConflict("Concurrent posting needs a retry");
-      return { commandId: issued.input.commandId, sale };
-    } catch (error) {
-      if (error instanceof SaleConflict && error.message.startsWith("Business changed since calculation"))
-        return reply.code(503).send({ error: "Concurrent posting; retry the original issued command", code: "RETRY" });
-      if (error instanceof SaleConflict || error instanceof ChangedCommandError)
-        return reply.code(409).send({ error: error.message, code: "REVIEW" });
-      if (typeof error === "object" && error && "code" in error && error.code === "P2002")
-        return reply.code(409).send({ error: "Issued number or identity is already used; preserve for review", code: "NUMBER_CONFLICT" });
-      throw error;
-    }
+    return reply.code(410).send({ code: "OFFLINE_RETIRED",
+      error: "Offline issue is retired. Preserve any saved issued bill and its encrypted recovery file for authorised reconciliation." });
   });
   app.get("/v1/sales/documents", async (request, reply) => {
     const ctx = saleContext(request, reply);

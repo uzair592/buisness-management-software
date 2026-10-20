@@ -165,6 +165,20 @@ test("a lost acknowledgement keeps the exact issued payload for retry", async ()
   } finally { globalThis.fetch = originalFetch; db.close(); await db.delete(); }
 });
 
+test("retired intake holds a legacy issued bill without erasing its receipt", async () => {
+  const db = await setup(`issue-${id()}`);
+  const originalFetch = globalThis.fetch;
+  try {
+    const saved = await issueOfflineCashSale(db, sale());
+    globalThis.fetch = async () => Response.json({ code: "OFFLINE_RETIRED",
+      error: "Preserve issued work for reconciliation" }, { status: 410 });
+    assert.deepEqual(await pushQueuedSales(db, "csrf"), { accepted: 0, held: 1, remaining: 0 });
+    assert.equal((await db.pending.get(saved.commandId))?.state, "held");
+    assert.match((await db.pending.get(saved.commandId))?.reason ?? "", /OFFLINE_RETIRED/);
+    assert.equal((await db.issuedSales.get(saved.id))?.number, saved.number);
+  } finally { globalThis.fetch = originalFetch; db.close(); await db.delete(); }
+});
+
 test("expired pull cursor pauses manual and automatic upload without changing issued work", async () => {
   const db = await setup(`issue-${id()}`);
   const originalFetch = globalThis.fetch;

@@ -12,10 +12,10 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
   </React.StrictMode>,
 );
 
-if (import.meta.env.PROD && "serviceWorker" in navigator) {
+if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    void navigator.serviceWorker.register("/sw.js").catch(() => {
-      // Installation remains optional; online operation does not depend on the worker.
+    void navigator.serviceWorker.getRegistration().then((registration) => registration?.update()).catch(() => {
+      // Existing offline workers retire on the next connected visit.
     });
   });
 }
