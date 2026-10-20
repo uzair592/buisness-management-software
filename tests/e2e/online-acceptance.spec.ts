@@ -70,6 +70,15 @@ test("a lost posting response retries one cloud sale and a second browser sees i
     }
     await Promise.all([page, otherPage].map((active) =>
       active.getByRole("button", { name: "Save & issue sale" }).click()));
+    for (const active of [page, otherPage]) {
+      await expect.poll(async () =>
+        await active.getByRole("button", { name: "Retry saved sale" }).count() +
+        await active.getByText(/Saved: D\d+-00000[23]/).count()).toBeGreaterThan(0);
+      if (await active.getByRole("button", { name: "Retry saved sale" }).count()) {
+        await expect(active.getByRole("alert")).toContainText("Business changed since calculation");
+        await active.getByRole("button", { name: "Retry saved sale" }).click();
+      }
+    }
     await expect(page.getByText(/Saved: D\d+-00000[23]/)).toBeVisible();
     await expect(otherPage.getByText(/Saved: D\d+-00000[23]/)).toBeVisible();
     const concurrentNumbers = await Promise.all([page, otherPage].map(async (active) =>
@@ -105,7 +114,8 @@ test("an old controlled browser retires its shell while preserving issued recove
     const cache = await caches.open("bms-public-shell-legacy");
     await cache.put("/old-shell", new Response("old shell"));
     await new Promise<void>((resolve, reject) => {
-      const open = indexedDB.open(dbName, 3);
+      // Dexie maps schema version 3 to the IndexedDB version 30.
+      const open = indexedDB.open(dbName, 30);
       open.onerror = () => reject(open.error);
       open.onupgradeneeded = () => {
         const db = open.result;
@@ -113,7 +123,9 @@ test("an old controlled browser retires its shell while preserving issued recove
         const device = db.createObjectStore("device", { keyPath: "id" });
         device.createIndex("numberPrefix", "numberPrefix"); device.createIndex("status", "status");
         db.createObjectStore("locations", { keyPath: "id" }).createIndex("code", "code");
-        db.createObjectStore("lease", { keyPath: "id" }).createIndex("deviceEnrollmentId", "deviceEnrollmentId");
+        const lease = db.createObjectStore("lease", { keyPath: "id" });
+        lease.createIndex("deviceEnrollmentId", "deviceEnrollmentId");
+        lease.createIndex("expiresAt", "expiresAt");
         db.createObjectStore("syncState", { keyPath: "key" });
         db.createObjectStore("catalogue", { keyPath: "key" }).createIndex("group", "group");
         const pending = db.createObjectStore("pending", { keyPath: "commandId" });

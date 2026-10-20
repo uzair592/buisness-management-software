@@ -734,6 +734,7 @@ export function SettingsPage() {
           </table>
         </div>
 
+        {!pendingPartitions.length && recoveryStatus && <p role="alert" className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm">{recoveryStatus}</p>}
         {pendingPartitions.length > 0 && <section aria-label="Saved issued work" className="p-4 bg-amber-50 border border-amber-200 rounded-lg space-y-3">
           <h3 className="font-bold">Issued work saved in this browser</h3>
           <p className="text-sm">These are older device-issued bills. Online-only billing does not upload them automatically. Export each encrypted recovery file and keep this browser profile for authorised reconciliation; do not issue a second sale for the same transaction.</p>
