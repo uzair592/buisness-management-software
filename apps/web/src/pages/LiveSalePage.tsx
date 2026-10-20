@@ -67,6 +67,7 @@ export function LiveSalePage() {
       const response = await fetch("/v1/sales/workspace", { signal });
       if (!response.ok) throw new Error("Could not load billing workspace. Check your access and connection.");
       const data = await response.json() as Workspace;
+      if (signal?.aborted || !navigator.onLine) return;
       setWorkspace(data);
       setDeviceId((current) => current || data.devices[0]?.id || "");
     } catch (cause) { if (cause instanceof Error && cause.name !== "AbortError") {
@@ -76,10 +77,15 @@ export function LiveSalePage() {
   }, []);
   useEffect(() => { const controller = new AbortController(); void load(controller.signal); return () => controller.abort(); }, [load]);
   useEffect(() => {
-    const update = () => setOnline(navigator.onLine);
+    const update = () => {
+      const connected = navigator.onLine;
+      setOnline(connected);
+      if (connected) void load();
+      else { setWorkspace(null); setQuery(""); }
+    };
     window.addEventListener("online", update); window.addEventListener("offline", update);
     return () => { window.removeEventListener("online", update); window.removeEventListener("offline", update); };
-  }, []);
+  }, [load]);
   useEffect(() => {
     const db = localDb();
     if (!db) return;

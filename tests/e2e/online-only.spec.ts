@@ -9,10 +9,14 @@ test("billing requires a server workspace and offers no offline issue", async ({
   expect(registration.status()).toBe(201);
   await page.goto("/sales/new");
   await expect(page.getByRole("heading", { name: "New sale" })).toBeVisible();
+  await expect(page.getByRole("searchbox", { name: "Search item or barcode" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Save offline cash bill" })).toHaveCount(0);
   await page.context().setOffline(true);
   await expect(page.getByText(/Connection lost. New bills cannot be issued/)).toBeVisible();
+  await expect(page.getByRole("searchbox", { name: "Search item or barcode" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Save & issue sale" })).toHaveCount(0);
   await page.context().setOffline(false);
+  await expect(page.getByRole("searchbox", { name: "Search item or barcode" })).toBeVisible();
 
   await page.route("**/v1/sales/workspace", (route) => route.abort());
   await page.reload();
