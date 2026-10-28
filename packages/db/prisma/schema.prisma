@@ -56,7 +56,18 @@ model Business {
   sales                  SaleDocument[]
   moneyTransfers         MoneyTransfer[]
   purchaseSequence       Int                      @default(0) @map("purchase_sequence") @db.Integer
+  creditNoteSequence     Int                      @default(0) @map("credit_note_sequence") @db.Integer
+  debitNoteSequence      Int                      @default(0) @map("debit_note_sequence") @db.Integer
+  stockAdjustmentSequence Int                     @default(0) @map("stock_adjustment_sequence") @db.Integer
+  paymentInSequence      Int                      @default(0) @map("payment_in_sequence") @db.Integer
+  paymentOutSequence     Int                      @default(0) @map("payment_out_sequence") @db.Integer
+  expenseSequence        Int                      @default(0) @map("expense_sequence") @db.Integer
   purchases              PurchaseDocument[]
+  creditNotes            CreditNote[]
+  stockAdjustments       StockAdjustment[]
+  payments               Payment[]
+  paymentAllocations     PaymentAllocation[]
+  expenses               Expense[]
 
   @@map("businesses")
 }
@@ -74,6 +85,8 @@ model Location {
   stockMovements    StockMovement[]
   saleDocuments     SaleDocument[]
   purchaseDocuments PurchaseDocument[]
+  creditNotes       CreditNote[]
+  stockAdjustments  StockAdjustment[]
 
   @@unique([businessId, id])
   @@unique([businessId, code])
@@ -205,6 +218,10 @@ model Account {
   transfersOut   MoneyTransfer[] @relation("TransferSource")
   transfersIn    MoneyTransfer[] @relation("TransferDestination")
   purchasePayments PurchasePayment[]
+  creditNoteRefunds CreditNoteRefund[]
+  payments       Payment[]
+  expensesPaid   Expense[] @relation("ExpensePaidFromAccount")
+  expensesAccount Expense[] @relation("ExpenseAccount")
 
   @@unique([businessId, id])
   @@unique([businessId, code])
@@ -236,6 +253,7 @@ model SaleDocument {
   sourceEvent        SourceEvent?     @relation(fields: [businessId, sourceEventId], references: [businessId, id], onDelete: Restrict)
   lines              SaleLine[]
   payments           SalePayment[]
+  paymentAllocations PaymentAllocation[]
 
   @@unique([businessId, id])
   @@unique([businessId, commandId])
@@ -314,6 +332,7 @@ model ExpenseCategory {
   createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz
   business   Business  @relation(fields: [businessId], references: [id], onDelete: Restrict)
   accounts   Account[]
+  expenses   Expense[]
 
   @@unique([businessId, id])
   @@unique([businessId, name])
@@ -362,6 +381,10 @@ model SourceEvent {
   saleDocuments       SaleDocument[]
   moneyTransfers      MoneyTransfer[]
   purchaseDocuments   PurchaseDocument[]
+  creditNotes         CreditNote[]
+  stockAdjustments    StockAdjustment[]
+  payments            Payment[]
+  expenses            Expense[]
 
   @@unique([businessId, id])
   @@unique([businessId, commandId, effectKind])
@@ -551,6 +574,8 @@ model Item {
   stockMovements StockMovement[]
   saleLines      SaleLine[]
   purchaseLines  PurchaseLine[]
+  creditNoteLines CreditNoteLine[]
+  stockAdjustments StockAdjustment[]
 
   @@unique([businessId, id])
   @@unique([businessId, sku])
@@ -591,6 +616,8 @@ model Party {
   openingDocuments OpeningDocument[]
   saleDocuments    SaleDocument[]
   purchaseDocuments PurchaseDocument[]
+  creditNotes      CreditNote[]
+  payments         Payment[]
 
   @@unique([businessId, id])
   @@index([businessId, name, id], map: "parties_search")
@@ -621,6 +648,7 @@ model PurchaseDocument {
   sourceEvent            SourceEvent?      @relation(fields: [businessId, sourceEventId], references: [businessId, id], onDelete: Restrict)
   lines                  PurchaseLine[]
   payments               PurchasePayment[]
+  paymentAllocations     PaymentAllocation[]
 
   @@unique([businessId, id])
   @@unique([businessId, commandId])
@@ -656,4 +684,190 @@ model PurchasePayment {
 
   @@unique([businessId, id])
   @@map("purchase_payments")
+}
+
+model CreditNote {
+  id                 String              @id @db.Uuid
+  businessId         String              @map("business_id") @db.Uuid
+  kind               String              @db.VarChar(20)
+  originalDocumentId String              @map("original_document_id") @db.Uuid
+  locationId         String              @map("location_id") @db.Uuid
+  partyId            String?             @map("party_id") @db.Uuid
+  commandId          String              @map("command_id") @db.Uuid
+  sourceEventId      String?             @map("source_event_id") @db.Uuid
+  number             String?             @db.VarChar(40)
+  status             String              @default("Draft") @db.VarChar(12)
+  version            Int                 @default(1)
+  reason             String              @db.Text
+  snapshot           Json
+  subtotal           Decimal?            @db.Decimal(38, 2)
+  taxTotal           Decimal?            @map("tax_total") @db.Decimal(38, 2)
+  total              Decimal?            @db.Decimal(38, 2)
+  allocatedCredit    Decimal?            @map("allocated_credit") @db.Decimal(38, 2)
+  refundedAmount     Decimal?            @map("refunded_amount") @db.Decimal(38, 2)
+  customerCredit     Decimal?            @map("customer_credit") @db.Decimal(38, 2)
+  businessDate       DateTime            @map("business_date") @db.Date
+  createdAt          DateTime            @default(now()) @map("created_at") @db.Timestamptz
+  postedAt           DateTime?           @map("posted_at") @db.Timestamptz
+  business           Business            @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  location           Location            @relation(fields: [businessId, locationId], references: [businessId, id], onDelete: Restrict)
+  party              Party?              @relation(fields: [businessId, partyId], references: [businessId, id], onDelete: Restrict)
+  sourceEvent        SourceEvent?        @relation(fields: [businessId, sourceEventId], references: [businessId, id], onDelete: Restrict)
+  lines              CreditNoteLine[]
+  refunds            CreditNoteRefund[]
+
+  @@unique([businessId, id])
+  @@unique([businessId, commandId])
+  @@unique([businessId, number])
+  @@index([businessId, businessDate, id], map: "credit_notes_by_date")
+  @@index([businessId, originalDocumentId], map: "credit_notes_by_original_doc")
+  @@map("credit_notes")
+}
+
+model CreditNoteLine {
+  id                 String              @id @db.Uuid
+  businessId         String              @map("business_id") @db.Uuid
+  creditNoteId       String              @map("credit_note_id") @db.Uuid
+  originalLineId     String              @map("original_line_id") @db.Uuid
+  itemId             String              @map("item_id") @db.Uuid
+  quantity           Decimal             @db.Decimal(38, 6)
+  unitPrice          Decimal             @map("unit_price") @db.Decimal(38, 2)
+  subtotal           Decimal             @db.Decimal(38, 2)
+  taxAmount          Decimal             @default(0) @map("tax_amount") @db.Decimal(38, 2)
+  total              Decimal             @db.Decimal(38, 2)
+  disposition        String              @db.VarChar(20)
+  snapshot           Json
+  creditNote         CreditNote          @relation(fields: [businessId, creditNoteId], references: [businessId, id], onDelete: Restrict)
+  item               Item                @relation(fields: [businessId, itemId], references: [businessId, id], onDelete: Restrict)
+
+  @@unique([businessId, id])
+  @@map("credit_note_lines")
+}
+
+model CreditNoteRefund {
+  id                 String              @id @db.Uuid
+  businessId         String              @map("business_id") @db.Uuid
+  creditNoteId       String              @map("credit_note_id") @db.Uuid
+  accountId          String              @map("account_id") @db.Uuid
+  kind               String              @db.VarChar(8)
+  amount             Decimal             @db.Decimal(38, 2)
+  reference          String?             @db.VarChar(120)
+  creditNote         CreditNote          @relation(fields: [businessId, creditNoteId], references: [businessId, id], onDelete: Restrict)
+  account            Account             @relation(fields: [businessId, accountId], references: [businessId, id], onDelete: Restrict)
+
+  @@unique([businessId, id])
+  @@map("credit_note_refunds")
+}
+
+model StockAdjustment {
+  id                 String              @id @db.Uuid
+  businessId         String              @map("business_id") @db.Uuid
+  locationId         String              @map("location_id") @db.Uuid
+  itemId             String              @map("item_id") @db.Uuid
+  commandId          String              @map("command_id") @db.Uuid
+  sourceEventId      String?             @map("source_event_id") @db.Uuid
+  adjustmentKind     String              @map("adjustment_kind") @db.VarChar(30)
+  countedQuantity    Decimal?            @map("counted_quantity") @db.Decimal(38, 6)
+  systemQuantity     Decimal?            @map("system_quantity") @db.Decimal(38, 6)
+  quantityDelta      Decimal             @map("quantity_delta") @db.Decimal(38, 6)
+  unitCost           Decimal             @map("unit_cost") @db.Decimal(38, 2)
+  valueDelta         Decimal             @map("value_delta") @db.Decimal(38, 2)
+  reason             String              @db.Text
+  status             String              @default("Draft") @db.VarChar(12)
+  businessDate       DateTime            @map("business_date") @db.Date
+  createdAt          DateTime            @default(now()) @map("created_at") @db.Timestamptz
+  postedAt           DateTime?           @map("posted_at") @db.Timestamptz
+  business           Business            @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  location           Location            @relation(fields: [businessId, locationId], references: [businessId, id], onDelete: Restrict)
+  item               Item                @relation(fields: [businessId, itemId], references: [businessId, id], onDelete: Restrict)
+  sourceEvent        SourceEvent?        @relation(fields: [businessId, sourceEventId], references: [businessId, id], onDelete: Restrict)
+
+  @@unique([businessId, id])
+  @@unique([businessId, commandId])
+  @@index([businessId, businessDate, id], map: "stock_adjustments_by_date")
+  @@map("stock_adjustments")
+}
+
+model Payment {
+  id                String              @id @db.Uuid
+  businessId        String              @map("business_id") @db.Uuid
+  commandId         String              @map("command_id") @db.Uuid
+  sourceEventId     String?             @map("source_event_id") @db.Uuid
+  partyId           String              @map("party_id") @db.Uuid
+  accountId         String              @map("account_id") @db.Uuid
+  paymentKind       String              @map("payment_kind") @db.VarChar(12)
+  number            String?             @db.VarChar(32)
+  amount            Decimal             @db.Decimal(38, 2)
+  allocatedAmount   Decimal             @default(0) @map("allocated_amount") @db.Decimal(38, 2)
+  unallocatedAmount Decimal             @default(0) @map("unallocated_amount") @db.Decimal(38, 2)
+  reference         String?             @db.VarChar(120)
+  note              String?             @db.Text
+  status            String              @default("Draft") @db.VarChar(12)
+  businessDate      DateTime            @map("business_date") @db.Date
+  createdAt         DateTime            @default(now()) @map("created_at") @db.Timestamptz
+  postedAt          DateTime?           @map("posted_at") @db.Timestamptz
+
+  business          Business            @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  party             Party               @relation(fields: [businessId, partyId], references: [businessId, id], onDelete: Restrict)
+  account           Account             @relation(fields: [businessId, accountId], references: [businessId, id], onDelete: Restrict)
+  sourceEvent       SourceEvent?        @relation(fields: [businessId, sourceEventId], references: [businessId, id], onDelete: Restrict)
+  allocations       PaymentAllocation[]
+
+  @@unique([businessId, id])
+  @@unique([businessId, commandId])
+  @@unique([businessId, number])
+  @@index([businessId, businessDate, id], map: "payments_by_date")
+  @@map("payments")
+}
+
+model PaymentAllocation {
+  id                 String            @id @db.Uuid
+  businessId         String            @map("business_id") @db.Uuid
+  paymentId          String            @map("payment_id") @db.Uuid
+  saleDocumentId     String?           @map("sale_document_id") @db.Uuid
+  purchaseDocumentId String?           @map("purchase_document_id") @db.Uuid
+  allocatedAmount    Decimal           @map("allocated_amount") @db.Decimal(38, 2)
+  createdAt          DateTime          @default(now()) @map("created_at") @db.Timestamptz
+
+  business           Business          @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  payment            Payment           @relation(fields: [businessId, paymentId], references: [businessId, id], onDelete: Restrict)
+  saleDocument       SaleDocument?     @relation(fields: [businessId, saleDocumentId], references: [businessId, id], onDelete: Restrict)
+  purchaseDocument   PurchaseDocument? @relation(fields: [businessId, purchaseDocumentId], references: [businessId, id], onDelete: Restrict)
+
+  @@unique([businessId, id])
+  @@index([businessId, paymentId], map: "payment_allocations_payment")
+  @@index([businessId, saleDocumentId], map: "payment_allocations_sale")
+  @@index([businessId, purchaseDocumentId], map: "payment_allocations_purchase")
+  @@map("payment_allocations")
+}
+
+model Expense {
+  id                 String            @id @db.Uuid
+  businessId         String            @map("business_id") @db.Uuid
+  commandId          String            @map("command_id") @db.Uuid
+  sourceEventId      String?           @map("source_event_id") @db.Uuid
+  expenseCategoryId  String            @map("expense_category_id") @db.Uuid
+  expenseAccountId   String            @map("expense_account_id") @db.Uuid
+  paidFromAccountId  String            @map("paid_from_account_id") @db.Uuid
+  number             String?           @db.VarChar(32)
+  amount             Decimal           @db.Decimal(38, 2)
+  taxAmount          Decimal           @default(0) @map("tax_amount") @db.Decimal(38, 2)
+  reference          String?           @db.VarChar(120)
+  note               String?           @db.Text
+  status             String            @default("Draft") @db.VarChar(12)
+  businessDate       DateTime          @map("business_date") @db.Date
+  createdAt          DateTime          @default(now()) @map("created_at") @db.Timestamptz
+  postedAt           DateTime?         @map("posted_at") @db.Timestamptz
+
+  business           Business          @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  expenseCategory    ExpenseCategory   @relation(fields: [businessId, expenseCategoryId], references: [businessId, id], onDelete: Restrict)
+  expenseAccount     Account           @relation("ExpenseAccount", fields: [businessId, expenseAccountId], references: [businessId, id], onDelete: Restrict)
+  paidFromAccount    Account           @relation("ExpensePaidFromAccount", fields: [businessId, paidFromAccountId], references: [businessId, id], onDelete: Restrict)
+  sourceEvent        SourceEvent?      @relation(fields: [businessId, sourceEventId], references: [businessId, id], onDelete: Restrict)
+
+  @@unique([businessId, id])
+  @@unique([businessId, commandId])
+  @@unique([businessId, number])
+  @@index([businessId, businessDate, id], map: "expenses_by_date")
+  @@map("expenses")
 }

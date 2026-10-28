@@ -9,8 +9,11 @@ const navigation = [
   { path: "/home", label: "Home", icon: HomeIcon },
   { path: "/sales", label: "Sales", icon: SalesIcon },
   { path: "/purchases", label: "Purchases", icon: PurchasesIcon },
+  { path: "/returns", label: "Returns", icon: ReturnsIcon },
+  { path: "/payments", label: "Payments", icon: PaymentsIcon },
   { path: "/parties", label: "Parties", icon: PartiesIcon },
   { path: "/items", label: "Items & Stock", icon: ItemsIcon },
+  { path: "/stock/adjustments", label: "Stock Adjustments", icon: AdjustmentsIcon },
   { path: "/cash-bank", label: "Cash & Bank", icon: CashIcon },
   { path: "/expenses", label: "Expenses", icon: ExpensesIcon },
   { path: "/reports", label: "Reports", icon: ReportsIcon },
@@ -201,6 +204,44 @@ function PurchasesIcon({ className }: { className?: string }) {
   );
 }
 
+function ReturnsIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M3 10h10a5 5 0 015 5v2m0 0l-4-4m4 4l4-4M3 10l4-4M3 10l4 4"
+      />
+    </svg>
+  );
+}
+
+function AdjustmentsIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"
+      />
+    </svg>
+  );
+}
+
 function PartiesIcon({ className }: { className?: string }) {
   return (
     <svg
@@ -253,6 +294,25 @@ function CashIcon({ className }: { className?: string }) {
         strokeLinejoin="round"
         strokeWidth={2}
         d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+      />
+    </svg>
+  );
+}
+
+function PaymentsIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"
       />
     </svg>
   );

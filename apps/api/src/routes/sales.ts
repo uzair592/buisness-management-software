@@ -166,7 +166,7 @@ export function registerSalesRoutes(app: FastifyInstance, deps: RouteDeps) {
           businessId: ctx.businessId,
           ...(ctx.locationId && ctx.role !== "Owner" ? { locationId: ctx.locationId } : {}),
         },
-        include: { lines: true, payments: true },
+        include: { lines: { include: { item: true } }, payments: true },
       }),
     );
     if (!sale) return reply.code(404).send({ error: "Sale not found" });

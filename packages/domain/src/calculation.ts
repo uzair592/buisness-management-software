@@ -186,3 +186,173 @@ export function allocatePayment(input: {
     receivable: render(total - cash - bank - credit, 2),
   };
 }
+
+export function validateReturnQuantity(
+  originalQuantityBase: string,
+  priorReturnedQuantityBase: string,
+  requestedReturnQuantityBase: string,
+): { remainingQuantityBase: string } {
+  const orig = decimal(originalQuantityBase, 6);
+  const prior = decimal(priorReturnedQuantityBase, 6);
+  const req = decimal(requestedReturnQuantityBase, 6);
+  if (req <= 0n) throw new Error("Return quantity must be greater than zero");
+  if (prior + req > orig) {
+    throw new Error(
+      `Return quantity exceeds remaining limit (original: ${originalQuantityBase}, returned: ${priorReturnedQuantityBase})`,
+    );
+  }
+  return { remainingQuantityBase: render(orig - prior - req, 6) };
+}
+
+export function calculateStockVariance(
+  countedQuantity: string,
+  systemQuantity: string,
+  unitCost: string,
+): {
+  quantityDelta: string;
+  valueDelta: string;
+  kind: "Surplus" | "Shortage" | "NoChange";
+} {
+  const counted = decimal(countedQuantity, 6);
+  const system = decimal(systemQuantity, 6);
+  const cost = decimal(unitCost, 2);
+  const deltaQty = counted - system;
+  const deltaAbs = deltaQty < 0n ? -deltaQty : deltaQty;
+  const deltaValue = halfUp(deltaAbs * cost, QUANTITY);
+  const signedValue = deltaQty < 0n ? -deltaValue : deltaValue;
+  return {
+    quantityDelta: render(deltaQty, 6),
+    valueDelta: render(signedValue, 2),
+    kind: deltaQty > 0n ? "Surplus" : deltaQty < 0n ? "Shortage" : "NoChange",
+  };
+}
+
+export interface OpenDeficit {
+  id: string;
+  openQuantityBase: string;
+  provisionalCost: string;
+}
+
+export interface SettledDeficit {
+  id: string;
+  settledQuantityBase: string;
+  remainingOpenQuantityBase: string;
+  provisionalCost: string;
+  actualCost: string;
+  unitDifference: string;
+  valueAdjustment: string;
+}
+
+export function allocateDeficitSettlement(
+  openDeficits: readonly OpenDeficit[],
+  receiptQuantityBase: string,
+  receiptUnitCost: string,
+): {
+  settlements: SettledDeficit[];
+  remainingReceiptQuantityBase: string;
+} {
+  let remainingReceipt = decimal(receiptQuantityBase, 6);
+  const actualCost = decimal(receiptUnitCost, 2);
+  const settlements: SettledDeficit[] = [];
+
+  for (const deficit of openDeficits) {
+    if (remainingReceipt <= 0n) break;
+    const openQty = decimal(deficit.openQuantityBase, 6);
+    if (openQty <= 0n) continue;
+    const settledQty = remainingReceipt >= openQty ? openQty : remainingReceipt;
+    remainingReceipt -= settledQty;
+    const remainingOpen = openQty - settledQty;
+    const provCost = decimal(deficit.provisionalCost, 2);
+    const unitDiff = actualCost - provCost;
+    const diffAbs = unitDiff < 0n ? -unitDiff : unitDiff;
+    const valueAdjAbs = halfUp(settledQty * diffAbs, QUANTITY);
+    const valueAdj = unitDiff < 0n ? -valueAdjAbs : valueAdjAbs;
+
+    settlements.push({
+      id: deficit.id,
+      settledQuantityBase: render(settledQty, 6),
+      remainingOpenQuantityBase: render(remainingOpen, 6),
+      provisionalCost: deficit.provisionalCost,
+      actualCost: receiptUnitCost,
+      unitDifference: render(unitDiff, 2),
+      valueAdjustment: render(valueAdj, 2),
+    });
+  }
+
+  return {
+    settlements,
+    remainingReceiptQuantityBase: render(remainingReceipt, 6),
+  };
+}
+
+export interface PaymentAllocationPlan {
+  totalAmount: string;
+  allocatedAmount: string;
+  unallocatedAmount: string;
+  allocations: {
+    id: string;
+    documentId: string;
+    allocatedAmount: string;
+  }[];
+}
+
+export function validatePaymentAllocations(
+  totalPaymentAmount: string,
+  allocations: readonly { id: string; documentId: string; allocatedAmount: string }[],
+  documentRemainingDues: ReadonlyMap<string, string>,
+): PaymentAllocationPlan {
+  const totalScaled = decimal(totalPaymentAmount, 2);
+  if (totalScaled <= 0n) throw new Error("Payment amount must be greater than zero");
+
+  const seenDocs = new Set<string>();
+  let sumAllocated = 0n;
+  const processedAllocations: { id: string; documentId: string; allocatedAmount: string }[] = [];
+
+  for (const alloc of allocations) {
+    if (seenDocs.has(alloc.documentId)) {
+      throw new Error(`Duplicate allocation for document ${alloc.documentId}`);
+    }
+    seenDocs.add(alloc.documentId);
+
+    const allocScaled = decimal(alloc.allocatedAmount, 2);
+    if (allocScaled <= 0n) {
+      throw new Error(`Allocation amount must be greater than zero for document ${alloc.documentId}`);
+    }
+
+    const openDueStr = documentRemainingDues.get(alloc.documentId);
+    if (openDueStr === undefined) {
+      throw new Error(`Document ${alloc.documentId} not found in open dues`);
+    }
+
+    const openDueScaled = decimal(openDueStr, 2);
+    if (allocScaled > openDueScaled) {
+      throw new Error(
+        `Allocated amount (${alloc.allocatedAmount}) exceeds open due (${openDueStr}) for document ${alloc.documentId}`,
+      );
+    }
+
+    sumAllocated += allocScaled;
+    processedAllocations.push({
+      id: alloc.id,
+      documentId: alloc.documentId,
+      allocatedAmount: render(allocScaled, 2),
+    });
+  }
+
+  if (sumAllocated > totalScaled) {
+    throw new Error(
+      `Total allocated amount (${render(sumAllocated, 2)}) exceeds payment amount (${totalPaymentAmount})`,
+    );
+  }
+
+  const unallocatedScaled = totalScaled - sumAllocated;
+
+  return {
+    totalAmount: render(totalScaled, 2),
+    allocatedAmount: render(sumAllocated, 2),
+    unallocatedAmount: render(unallocatedScaled, 2),
+    allocations: processedAllocations,
+  };
+}
+
+

@@ -153,7 +153,7 @@ export function registerPurchaseRoutes(app: FastifyInstance, deps: RouteDeps) {
         businessId: ctx.businessId,
         ...(ctx.locationId && ctx.role !== "Owner" ? { locationId: ctx.locationId } : {}),
       },
-      include: { lines: true, payments: true, party: { select: { name: true } } },
+      include: { lines: { include: { item: true } }, payments: true, party: { select: { name: true } } },
     }));
     if (!purchase) return reply.code(404).send({ error: "Purchase not found" });
     return purchase;
