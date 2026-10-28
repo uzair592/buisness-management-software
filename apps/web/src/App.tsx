@@ -7,6 +7,8 @@ import { PurchasesPage } from "./pages/PurchasesPage";
 import { NewPurchasePage } from "./pages/NewPurchasePage";
 import { ReturnsPage } from "./pages/ReturnsPage";
 import { StockAdjustmentsPage } from "./pages/StockAdjustmentsPage";
+import { PaymentsPage } from "./pages/PaymentsPage";
+import { ExpensesPage } from "./pages/ExpensesPage";
 import { PlannedPage } from "./pages/PlannedPage";
 import { PreviewProvider } from "./preview/PreviewProvider";
 import { DirectoryPage } from "./pages/DirectoryPage";
@@ -15,7 +17,6 @@ import { AccountSetupPage } from "./pages/AccountSetupPage";
 import { AuthProvider } from "./context/AuthContext";
 
 const planned = [
-  ["expenses", "Expenses", "Categories and cash expenses"],
   ["reports", "Reports", "Business reports with explicit data coverage"],
 ];
 
@@ -32,6 +33,8 @@ export default function App() {
             <Route path="/purchases" element={<PurchasesPage />} />
             <Route path="/purchases/new" element={<NewPurchasePage />} />
             <Route path="/returns" element={<ReturnsPage />} />
+            <Route path="/payments" element={<PaymentsPage />} />
+            <Route path="/expenses" element={<ExpensesPage />} />
             <Route path="/stock/adjustments" element={<StockAdjustmentsPage />} />
             <Route
               path="/parties"

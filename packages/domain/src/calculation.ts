@@ -285,3 +285,74 @@ export function allocateDeficitSettlement(
   };
 }
 
+export interface PaymentAllocationPlan {
+  totalAmount: string;
+  allocatedAmount: string;
+  unallocatedAmount: string;
+  allocations: {
+    id: string;
+    documentId: string;
+    allocatedAmount: string;
+  }[];
+}
+
+export function validatePaymentAllocations(
+  totalPaymentAmount: string,
+  allocations: readonly { id: string; documentId: string; allocatedAmount: string }[],
+  documentRemainingDues: ReadonlyMap<string, string>,
+): PaymentAllocationPlan {
+  const totalScaled = decimal(totalPaymentAmount, 2);
+  if (totalScaled <= 0n) throw new Error("Payment amount must be greater than zero");
+
+  const seenDocs = new Set<string>();
+  let sumAllocated = 0n;
+  const processedAllocations: { id: string; documentId: string; allocatedAmount: string }[] = [];
+
+  for (const alloc of allocations) {
+    if (seenDocs.has(alloc.documentId)) {
+      throw new Error(`Duplicate allocation for document ${alloc.documentId}`);
+    }
+    seenDocs.add(alloc.documentId);
+
+    const allocScaled = decimal(alloc.allocatedAmount, 2);
+    if (allocScaled <= 0n) {
+      throw new Error(`Allocation amount must be greater than zero for document ${alloc.documentId}`);
+    }
+
+    const openDueStr = documentRemainingDues.get(alloc.documentId);
+    if (openDueStr === undefined) {
+      throw new Error(`Document ${alloc.documentId} not found in open dues`);
+    }
+
+    const openDueScaled = decimal(openDueStr, 2);
+    if (allocScaled > openDueScaled) {
+      throw new Error(
+        `Allocated amount (${alloc.allocatedAmount}) exceeds open due (${openDueStr}) for document ${alloc.documentId}`,
+      );
+    }
+
+    sumAllocated += allocScaled;
+    processedAllocations.push({
+      id: alloc.id,
+      documentId: alloc.documentId,
+      allocatedAmount: render(allocScaled, 2),
+    });
+  }
+
+  if (sumAllocated > totalScaled) {
+    throw new Error(
+      `Total allocated amount (${render(sumAllocated, 2)}) exceeds payment amount (${totalPaymentAmount})`,
+    );
+  }
+
+  const unallocatedScaled = totalScaled - sumAllocated;
+
+  return {
+    totalAmount: render(totalScaled, 2),
+    allocatedAmount: render(sumAllocated, 2),
+    unallocatedAmount: render(unallocatedScaled, 2),
+    allocations: processedAllocations,
+  };
+}
+
+

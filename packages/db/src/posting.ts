@@ -49,7 +49,7 @@ export interface PostingCommand {
   schemaVersion: 1;
   calculationVersion: 1;
   businessDate: string;
-  effectKind: "opening" | "allocation" | "reversal" | "adjustment" | "sale" | "transfer" | "purchase";
+  effectKind: "opening" | "allocation" | "reversal" | "adjustment" | "sale" | "transfer" | "purchase" | "expense";
   postingKind: string;
   reversesEntryId?: string;
   lines: readonly PostingLine[];
@@ -86,7 +86,7 @@ function validate(command: PostingCommand): void {
       command.schemaVersion !== 1 || command.calculationVersion !== 1) throw new Error("Unsupported command version");
   if (!/^\d{4}-\d{2}-\d{2}$/.test(command.businessDate)) throw new Error("Invalid business date");
   if (!/^[a-z][a-z0-9_.-]{0,38}$/.test(command.postingKind)) throw new Error("Invalid posting kind");
-  if (!["opening", "allocation", "reversal", "adjustment", "sale", "transfer", "purchase"].includes(command.effectKind)) throw new Error("Unsupported effect kind");
+  if (!["opening", "allocation", "reversal", "adjustment", "sale", "transfer", "purchase", "expense"].includes(command.effectKind)) throw new Error("Unsupported effect kind");
   if (command.lines.length < 2 || new Set(command.lines.map((l) => l.id)).size !== command.lines.length) throw new Error("Journal needs distinct lines");
   let debit = 0n;
   let credit = 0n;
@@ -130,7 +130,7 @@ export async function postCommand(
           where: { businessId: command.businessId, userId: command.userId },
         });
         if (!membership || !(["Owner", "Accountant"].includes(membership.role) ||
-          (command.effectKind === "sale" && membership.role === "Cashier"))) throw new Error("Posting authority required");
+          ((command.effectKind === "sale" || command.postingKind === "payment.in") && membership.role === "Cashier"))) throw new Error("Posting authority required");
         if (command.deviceEnrollmentId) {
           const device = await tx.deviceEnrollment.findFirst({
             where: { id: command.deviceEnrollmentId, businessId: command.businessId,

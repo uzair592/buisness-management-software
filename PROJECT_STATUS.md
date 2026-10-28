@@ -12,7 +12,7 @@ Last planning update: 2026-10-20.
 | M04 Catalogue and opening balances | In progress | PR #9 and #10 merged. PR #10 added account setup, role-filtered catalogue bootstrap/pull, previewed one-time opening and a provisional-party ordering contract. The current M04 follow-up adds paged opening choices and category/tax/conversion setup UI; provisional-party server acceptance and full M04 gate remain open. |
 | M05 First sale | PR #12 merged; broader accounting gate remains open | Online billing and atomic journal/stock/payment path; [CI on the opening-form race repair](https://github.com/uzair592/buisness-management-software/actions/runs/39158053639) passed its checks. |
 | M06 Online web cutover | PR #15 and #16 merged; deployment gate open | New offline issue and intake removed; old browser-issued work kept for encrypted recovery. [PR #16 CI](https://github.com/uzair592/buisness-management-software/actions/runs/39479468804) passed PostgreSQL, runtime and 19 browser cases. Real legacy issued-work inventory/reconciliation is still required before deployment. |
-| M07 Purchases and money | In progress; Increment 1 merged in PR #17, Increment 2 ready on `milestone-07-purchases-and-bills` | Online money transfer (PR #17); Purchase bills with supplier ref, stock receipt, moving average valuation, balanced journals and duplicate ref prevention ([M07 evidence](docs/evidence/m07/README.md)) |
+| M07 Purchases and money | Complete on `milestone-07-payments-and-expenses` | Online money transfer (PR #17); Purchase bills with inward stock receipt and moving average valuation; Payment In, Payment Out with invoice allocation & unallocated advance; Business Expenses with categories & cash balance guards ([M07 evidence](docs/evidence/m07/README.md)) |
 | M08 Returns and inventory lifecycle | Complete on `milestone-08-returns-and-stock` | Customer credit notes (CN), supplier debit notes (DN), refunds, stock count variances, approved physical damage/loss write-offs, and deterministic deficit cost reconciliation ([M08 evidence](docs/evidence/m08/README.md)) |
 | M09 Reports and reconciliation | Not started | — |
 | M10 UX, printing and installation | Not started | — |
@@ -20,6 +20,39 @@ Last planning update: 2026-10-20.
 | M12 Quotes and warehouse workflows | Not started | — |
 | M13 Pilot and release | Not started | — |
 | M14 Optional commercial platform | Deferred | Requires product decision |
+
+## Milestone 07: Payments, invoice allocations, and business expenses (`milestone-07-payments-and-expenses`)
+
+- **Additive PostgreSQL Migration (`20261023000000_m07_payments_and_expenses`)**:
+  - Adds sequential counters `payment_in_sequence`, `payment_out_sequence`, and `expense_sequence` to `businesses`.
+  - Creates tables `payments`, `payment_allocations`, and `expenses` with composite tenant foreign keys `(business_id, id)`.
+  - Preserves financial integrity with check constraints:
+    - `payment_posted_complete`: enforces `allocated_amount + unallocated_amount = amount` on all posted payments.
+    - `payment_allocation_target`: guarantees allocations link to either a sale invoice or purchase bill, never both.
+    - `expense_posted_complete`: enforces positive amounts and complete records on posted expenses.
+  - Enables and forces PostgreSQL Row Level Security (RLS) on all 3 new tables with `tenant_scope` policies and permissions granted to the restricted `bms_runtime` role.
+- **Domain Arithmetic & Allocation (`@business/domain`)**:
+  - `validatePaymentAllocations`: validates non-negative bounds, prevents over-allocation beyond open invoice/bill dues, calculates unallocated advance amounts, and handles tie-breaking.
+- **Backend Domain Engines & Fastify Routes (`apps/api`)**:
+  - `payments.ts`:
+    - Customer Receipts (`PaymentIn` -> `PAY-IN-xxxxxx`): debits Cash/Bank and credits Accounts Receivable (`OPEN_RECEIVABLE`), reducing invoice dues.
+    - Supplier Payouts (`PaymentOut` -> `PAY-OUT-xxxxxx`): debits Accounts Payable (`OPEN_PAYABLE`) and credits Cash/Bank, reducing supplier bill dues.
+    - Dynamic open dues calculation: `remainingDue = originalDue - allocatedCreditNotes - priorPaymentAllocations`.
+    - Double-entry posting via atomic sync-locked command posting engine. Cash balance guards prevent overdrawing physical till accounts.
+  - `expenses.ts`:
+    - Operating Expenses (`EXP-xxxxxx`): debits expense account heads and credits Cash/Bank.
+    - Validates category membership and till balance sufficiency.
+  - Routes registered:
+    - `GET /v1/payments/workspace`, `GET /v1/payments/open-documents/:partyId`, `GET /v1/payments`, `GET /v1/payments/:id`, `POST /v1/payments/drafts`, `POST /v1/payments/post`
+    - `GET /v1/expenses/workspace`, `GET /v1/expenses`, `GET /v1/expenses/:id`, `POST /v1/expenses/drafts`, `POST /v1/expenses/post`, `POST /v1/expenses/categories`
+- **Frontend UI (`apps/web`)**:
+  - `PaymentsPage.tsx`: Tabs for All Payments, + Payment In, and + Payment Out; live fetching of open invoices/bills by party with auto-allocation checkboxes and advance calculations; details inspection modal.
+  - `ExpensesPage.tsx`: KPI cards for total operational spending; category and expense head selection; quick inline category provisioning; expense list with category filters.
+  - Navigation: `/payments` and `/expenses` integrated into `App.tsx` and sidebar navigation in `Shell.tsx`.
+- **Verification**:
+  - `pnpm check`: 0 lint errors/warnings, strict TypeScript check across all workspace projects, production builds for API and Web, 29 unit tests passing.
+  - `pnpm test:db`: All 14 PostgreSQL integration test suites passed (14/14) under real database constraints and RLS (`tests/payment-db.test.ts`, `tests/expense-db.test.ts`).
+  - `pnpm exec playwright test tests/e2e/payments.spec.ts`: Passed E2E test verifying sale invoice generation, customer payment in allocation, advance recording, expense category addition, and shop expense recording.
 
 ## Milestone 08: Returns, credit notes, stock adjustments and resolved valuation (`milestone-08-returns-and-stock`)
 

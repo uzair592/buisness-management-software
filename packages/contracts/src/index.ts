@@ -187,3 +187,88 @@ export const identityBootstrapSchema = z.object({
   }),
 });
 export type IdentityBootstrap = z.infer<typeof identityBootstrapSchema>;
+
+
+export const paymentKindSchema = z.enum(["PaymentIn", "PaymentOut"]);
+export type PaymentKind = z.infer<typeof paymentKindSchema>;
+
+export const paymentStatusSchema = z.enum(["Draft", "Posted"]);
+export type PaymentStatus = z.infer<typeof paymentStatusSchema>;
+
+export const paymentAllocationInputSchema = z.object({
+  id: z.string().uuid(),
+  documentId: z.string().uuid(),
+  allocatedAmount: z.string().regex(/^(?!0+(?:\.0+)?$)\d{1,30}(?:\.\d{1,2})?$/),
+});
+export type PaymentAllocationInput = z.infer<typeof paymentAllocationInputSchema>;
+
+export const createPaymentInputSchema = z.object({
+  id: z.string().uuid(),
+  commandId: z.string().uuid(),
+  partyId: z.string().uuid(),
+  accountId: z.string().uuid(),
+  paymentKind: paymentKindSchema,
+  amount: z.string().regex(/^(?!0+(?:\.0+)?$)\d{1,30}(?:\.\d{1,2})?$/),
+  reference: z.string().trim().max(120).optional().nullable(),
+  note: z.string().trim().max(500).optional().nullable(),
+  businessDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  allocations: z.array(paymentAllocationInputSchema).default([]),
+});
+export type CreatePaymentInput = z.infer<typeof createPaymentInputSchema>;
+
+export const paymentSummarySchema = z.object({
+  id: z.string().uuid(),
+  paymentKind: paymentKindSchema,
+  number: z.string().nullable(),
+  partyId: z.string().uuid(),
+  partyName: z.string().optional(),
+  accountId: z.string().uuid(),
+  accountName: z.string().optional(),
+  amount: z.string(),
+  allocatedAmount: z.string(),
+  unallocatedAmount: z.string(),
+  reference: z.string().nullable(),
+  note: z.string().nullable(),
+  status: paymentStatusSchema,
+  businessDate: z.string(),
+  createdAt: z.string(),
+  postedAt: z.string().nullable(),
+});
+export type PaymentSummary = z.infer<typeof paymentSummarySchema>;
+
+export const expenseStatusSchema = z.enum(["Draft", "Posted"]);
+export type ExpenseStatus = z.infer<typeof expenseStatusSchema>;
+
+export const createExpenseInputSchema = z.object({
+  id: z.string().uuid(),
+  commandId: z.string().uuid(),
+  expenseCategoryId: z.string().uuid(),
+  expenseAccountId: z.string().uuid(),
+  paidFromAccountId: z.string().uuid(),
+  amount: z.string().regex(/^(?!0+(?:\.0+)?$)\d{1,30}(?:\.\d{1,2})?$/),
+  taxAmount: z.string().regex(/^\d{1,30}(?:\.\d{1,2})?$/).default("0.00"),
+  reference: z.string().trim().max(120).optional().nullable(),
+  note: z.string().trim().max(500).optional().nullable(),
+  businessDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+});
+export type CreateExpenseInput = z.infer<typeof createExpenseInputSchema>;
+
+export const expenseSummarySchema = z.object({
+  id: z.string().uuid(),
+  number: z.string().nullable(),
+  expenseCategoryId: z.string().uuid(),
+  categoryName: z.string().optional(),
+  expenseAccountId: z.string().uuid(),
+  expenseAccountName: z.string().optional(),
+  paidFromAccountId: z.string().uuid(),
+  paidFromAccountName: z.string().optional(),
+  amount: z.string(),
+  taxAmount: z.string(),
+  reference: z.string().nullable(),
+  note: z.string().nullable(),
+  status: expenseStatusSchema,
+  businessDate: z.string(),
+  createdAt: z.string(),
+  postedAt: z.string().nullable(),
+});
+export type ExpenseSummary = z.infer<typeof expenseSummarySchema>;
