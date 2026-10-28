@@ -21,6 +21,38 @@ Last planning update: 2026-10-20.
 | M13 Pilot and release | Not started | — |
 | M14 Optional commercial platform | Deferred | Requires product decision |
 
+## Architecture modularization, route separation & online UX polish (`refactor/modular-architecture-and-ux-polish`)
+
+- **Fastify API Modularization**:
+  - Broken up monolithic 1874-line `apps/api/src/app.ts` into isolated, domain-driven route plugins under `apps/api/src/routes/`:
+    - `health.ts` (liveness & readiness probes)
+    - `auth.ts` (owner registration, sign-in, session status, password changes, logout)
+    - `devices.ts` (device bootstrap, sync state, and locations)
+    - `sync.ts` (change log pull, snapshot download, and `410 OFFLINE_RETIRED` cutover gate)
+    - `sales.ts` (sales invoice drafts, atomic posting, receipt retrieval)
+    - `purchases.ts` (purchase bill drafts, atomic posting, duplicate ref check)
+    - `catalogue.ts` (items, categories, parties, units, tax rates)
+    - `accounts.ts` (bank/cash accounts, money transfers, account books)
+    - `opening.ts` (opening stock and opening party balances)
+    - `context.ts` (shared database, authentication, CSRF, and tenant context helpers)
+  - Root `apps/api/src/app.ts` is reduced to 94 lines, delegating domain route mounting via Fastify plugin architecture.
+- **Frontend Dual-Page Consolidation & Sample Isolation**:
+  - Sample/mock preview logic cleanly partitioned into `apps/web/src/pages/sample/SampleSalePage.tsx` and `SampleDirectoryPage.tsx`.
+  - Unified `NewSalePage` and `DirectoryPage` now act as clean dispatchers switching between live and sample workspaces based on authenticated tenant state.
+- **Legacy Storage Boundary**:
+  - Authored `apps/web/src/db/README.md` defining `apps/web/src/db/` as an isolated legacy/recovery boundary for encrypted inspection and unsaved form refresh protection.
+- **Online UX Polish & Keyboard Shortcuts**:
+  - Global billing shortcuts: `Alt+S` for New Sale, `Alt+P` for New Purchase.
+  - Form submission shortcut: `Ctrl+Enter` / `Cmd+Enter` in `LiveSalePage` and `LivePurchasePage` to post bills.
+  - Optimistic UI loading indicators and double-billing protection via disable-on-submit.
+- **Comprehensive Flow & Roadmap Documentation**:
+  - Published [docs/architecture/CODE_FLOW_AND_PHASES.md](docs/architecture/CODE_FLOW_AND_PHASES.md) covering architecture invariants, end-to-end data flows, Mermaid diagrams, and phase delivery roadmaps.
+- **Full Verification**:
+  - `pnpm check`: 0 lint errors/warnings, strict TypeScript check on all 7 workspace projects, production builds for API and Web, 26 unit tests passing.
+  - `pnpm test:runtime`: Compiled API server startup and readiness checks passed.
+  - `pnpm test:db`: All 11 PostgreSQL integration tests passed with real schema and RLS.
+  - `pnpm test:e2e`: All 21 Playwright tests passed across desktop and mobile viewports.
+
 ## Next action
 
 The 2026-10-20 product decision changed the target to an online browser application. PR #16 merged online retry, two-browser and synthetic old-client recovery acceptance onto main at `3d0b11f`. Inventory and review real pre-cutover browser-issued bills before deploying the cutover. Continue M07 purchases and money under server authority; M08 returns and M09 reports follow their own gates. M05 broader accounting, M04 large setup choices and M03 valuation fixtures remain tracked.

@@ -44,11 +44,19 @@ export function Shell({ children }: { children: ReactNode }) {
         if (document.querySelector("dialog[open]")) return;
         event.preventDefault();
         setCommandsOpen(true);
+      } else if (event.altKey && !event.ctrlKey && !event.metaKey) {
+        if (event.key.toLowerCase() === "s") {
+          event.preventDefault();
+          navigate("/sales/new");
+        } else if (event.key.toLowerCase() === "p") {
+          event.preventDefault();
+          navigate("/purchases/new");
+        }
       }
     }
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, []);
+  }, [navigate]);
   return (
     <div className={"app-shell " + (collapsed ? "is-collapsed" : "")}>
       <a className="skip-link" href="#main">
