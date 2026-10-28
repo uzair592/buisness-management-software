@@ -175,6 +175,16 @@ export function LiveSalePage() {
     } catch (cause) { setError(`${cause instanceof Error ? cause.message : "Could not issue sale."} The saved attempt keeps its IDs; retry after checking your connection.`); }
     finally { setBusy(false); }
   }
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if ((event.ctrlKey || event.metaKey) && event.key === "Enter" && !busy && online && !issued) {
+        event.preventDefault();
+        void issue();
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [busy, online, issued, workspace, selectedDevice, calculation, payment, cart, partyId, cashApplied, cashAccount, bankApplied, bankAccount, bankReference, documentDiscount, cashTendered, pending]);
   async function downloadRecovery() {
     const db = localDb();
     if (!db) return;

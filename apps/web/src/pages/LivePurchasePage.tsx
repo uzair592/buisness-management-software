@@ -388,6 +388,17 @@ export function LivePurchasePage() {
     }
   }
 
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if ((event.ctrlKey || event.metaKey) && event.key === "Enter" && !busy && !issued) {
+        event.preventDefault();
+        void handlePostPurchase();
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [busy, issued, supplierInvoiceNumber, lines, bankApplied, bankReference, buildPayload, documentId, commandId, allowDuplicateReference, auth.csrfToken]);
+
   if (loading) {
     return (
       <div className="live-purchase-page">
