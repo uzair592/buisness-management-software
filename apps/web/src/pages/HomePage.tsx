@@ -56,6 +56,9 @@ export function HomePage() {
         </div>
         <div className="heading-actions">
           {sample && <PeriodFilter />}
+          <Link className="btn-secondary" to="/purchases/new">
+            ＋ Add Purchase
+          </Link>
           <Link className="btn-primary" to="/sales/new">
             ＋ New Sale
           </Link>

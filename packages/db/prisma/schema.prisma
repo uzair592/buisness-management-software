@@ -55,6 +55,8 @@ model Business {
   parties                Party[]
   sales                  SaleDocument[]
   moneyTransfers         MoneyTransfer[]
+  purchaseSequence       Int                      @default(0) @map("purchase_sequence") @db.Integer
+  purchases              PurchaseDocument[]
 
   @@map("businesses")
 }
@@ -71,6 +73,7 @@ model Location {
   memberships       Membership[]
   stockMovements    StockMovement[]
   saleDocuments     SaleDocument[]
+  purchaseDocuments PurchaseDocument[]
 
   @@unique([businessId, id])
   @@unique([businessId, code])
@@ -201,6 +204,7 @@ model Account {
   salePayments   SalePayment[]
   transfersOut   MoneyTransfer[] @relation("TransferSource")
   transfersIn    MoneyTransfer[] @relation("TransferDestination")
+  purchasePayments PurchasePayment[]
 
   @@unique([businessId, id])
   @@unique([businessId, code])
@@ -357,6 +361,7 @@ model SourceEvent {
   openingBatches      OpeningBatch[]
   saleDocuments       SaleDocument[]
   moneyTransfers      MoneyTransfer[]
+  purchaseDocuments   PurchaseDocument[]
 
   @@unique([businessId, id])
   @@unique([businessId, commandId, effectKind])
@@ -545,6 +550,7 @@ model Item {
   conversions    ItemUnitConversion[]
   stockMovements StockMovement[]
   saleLines      SaleLine[]
+  purchaseLines  PurchaseLine[]
 
   @@unique([businessId, id])
   @@unique([businessId, sku])
@@ -584,8 +590,70 @@ model Party {
   business   Business  @relation(fields: [businessId], references: [id], onDelete: Restrict)
   openingDocuments OpeningDocument[]
   saleDocuments    SaleDocument[]
+  purchaseDocuments PurchaseDocument[]
 
   @@unique([businessId, id])
   @@index([businessId, name, id], map: "parties_search")
   @@map("parties")
+}
+
+model PurchaseDocument {
+  id                     String            @id @db.Uuid
+  businessId             String            @map("business_id") @db.Uuid
+  locationId             String            @map("location_id") @db.Uuid
+  partyId                String            @map("party_id") @db.Uuid
+  commandId              String            @map("command_id") @db.Uuid
+  sourceEventId          String?           @map("source_event_id") @db.Uuid
+  number                 String?           @db.VarChar(40)
+  supplierInvoiceNumber  String            @map("supplier_invoice_number") @db.VarChar(120)
+  status                 String            @default("Draft") @db.VarChar(12)
+  version                Int               @default(1)
+  snapshot               Json
+  total                  Decimal?          @db.Decimal(38, 2)
+  paid                   Decimal?          @db.Decimal(38, 2)
+  due                    Decimal?          @db.Decimal(38, 2)
+  businessDate           DateTime          @map("business_date") @db.Date
+  createdAt              DateTime          @default(now()) @map("created_at") @db.Timestamptz
+  postedAt               DateTime?         @map("posted_at") @db.Timestamptz
+  business               Business          @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  location               Location          @relation(fields: [businessId, locationId], references: [businessId, id], onDelete: Restrict)
+  party                  Party             @relation(fields: [businessId, partyId], references: [businessId, id], onDelete: Restrict)
+  sourceEvent            SourceEvent?      @relation(fields: [businessId, sourceEventId], references: [businessId, id], onDelete: Restrict)
+  lines                  PurchaseLine[]
+  payments               PurchasePayment[]
+
+  @@unique([businessId, id])
+  @@unique([businessId, commandId])
+  @@unique([businessId, number])
+  @@index([businessId, partyId, supplierInvoiceNumber])
+  @@index([businessId, businessDate, id], map: "purchase_documents_by_date")
+  @@map("purchase_documents")
+}
+
+model PurchaseLine {
+  id         String           @id @db.Uuid
+  businessId String           @map("business_id") @db.Uuid
+  purchaseId String           @map("purchase_id") @db.Uuid
+  itemId     String           @map("item_id") @db.Uuid
+  snapshot   Json
+  purchase   PurchaseDocument @relation(fields: [businessId, purchaseId], references: [businessId, id], onDelete: Restrict)
+  item       Item             @relation(fields: [businessId, itemId], references: [businessId, id], onDelete: Restrict)
+
+  @@unique([businessId, id])
+  @@map("purchase_lines")
+}
+
+model PurchasePayment {
+  id         String           @id @db.Uuid
+  businessId String           @map("business_id") @db.Uuid
+  purchaseId String           @map("purchase_id") @db.Uuid
+  accountId  String           @map("account_id") @db.Uuid
+  kind       String           @db.VarChar(8)
+  applied    Decimal          @db.Decimal(38, 2)
+  reference  String?          @db.VarChar(120)
+  purchase   PurchaseDocument @relation(fields: [businessId, purchaseId], references: [businessId, id], onDelete: Restrict)
+  account    Account          @relation(fields: [businessId, accountId], references: [businessId, id], onDelete: Restrict)
+
+  @@unique([businessId, id])
+  @@map("purchase_payments")
 }
