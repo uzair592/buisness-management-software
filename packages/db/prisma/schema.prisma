@@ -18,6 +18,8 @@ model User {
   memberships  Membership[]
   sessions     Session[]
   auditEvents  AuditEvent[]
+  openedCashSessions CashSession[] @relation("CashSessionOpenedBy")
+  closedCashSessions CashSession[] @relation("CashSessionClosedBy")
 
   @@map("users")
 }
@@ -62,12 +64,14 @@ model Business {
   paymentInSequence      Int                      @default(0) @map("payment_in_sequence") @db.Integer
   paymentOutSequence     Int                      @default(0) @map("payment_out_sequence") @db.Integer
   expenseSequence        Int                      @default(0) @map("expense_sequence") @db.Integer
+  cashSessionSequence    Int                      @default(0) @map("cash_session_sequence") @db.Integer
   purchases              PurchaseDocument[]
   creditNotes            CreditNote[]
   stockAdjustments       StockAdjustment[]
   payments               Payment[]
   paymentAllocations     PaymentAllocation[]
   expenses               Expense[]
+  cashSessions           CashSession[]
 
   @@map("businesses")
 }
@@ -87,6 +91,7 @@ model Location {
   purchaseDocuments PurchaseDocument[]
   creditNotes       CreditNote[]
   stockAdjustments  StockAdjustment[]
+  cashSessions      CashSession[]
 
   @@unique([businessId, id])
   @@unique([businessId, code])
@@ -150,6 +155,7 @@ model DeviceEnrollment {
   offlineLeases OfflineLease[]
   commandReceipts CommandReceipt[]
   saleDocuments    SaleDocument[]
+  cashSessions     CashSession[]
 
   @@unique([businessId, id])
   @@unique([businessId, numberPrefix])
@@ -222,6 +228,7 @@ model Account {
   payments       Payment[]
   expensesPaid   Expense[] @relation("ExpensePaidFromAccount")
   expensesAccount Expense[] @relation("ExpenseAccount")
+  cashSessions   CashSession[]
 
   @@unique([businessId, id])
   @@unique([businessId, code])
@@ -870,4 +877,39 @@ model Expense {
   @@unique([businessId, number])
   @@index([businessId, businessDate, id], map: "expenses_by_date")
   @@map("expenses")
+}
+
+model CashSession {
+  id                    String            @id @default(uuid()) @db.Uuid
+  businessId            String            @map("business_id") @db.Uuid
+  sessionNumber         String            @map("session_number") @db.VarChar(32)
+  locationId            String            @map("location_id") @db.Uuid
+  deviceId              String            @map("device_id") @db.Uuid
+  cashAccountId         String            @map("cash_account_id") @db.Uuid
+  openedAt              DateTime          @default(now()) @map("opened_at") @db.Timestamptz
+  closedAt              DateTime?         @map("closed_at") @db.Timestamptz
+  openedByUserId        String            @map("opened_by_user_id") @db.Uuid
+  closedByUserId        String?           @map("closed_by_user_id") @db.Uuid
+  openingFloat          Decimal           @map("opening_float") @db.Decimal(19, 4)
+  countedAmount         Decimal?          @map("counted_amount") @db.Decimal(19, 4)
+  expectedAmount        Decimal?          @map("expected_amount") @db.Decimal(19, 4)
+  varianceAmount        Decimal?          @map("variance_amount") @db.Decimal(19, 4)
+  varianceReason        String?           @map("variance_reason") @db.Text
+  status                String            @default("Open") @map("status") @db.VarChar(20)
+  closedWatermarkCursor BigInt?           @map("closed_watermark_cursor") @db.BigInt
+  createdAt             DateTime          @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt             DateTime          @updatedAt @map("updated_at") @db.Timestamptz
+
+  business              Business          @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  location              Location          @relation(fields: [businessId, locationId], references: [businessId, id], onDelete: Restrict)
+  device                DeviceEnrollment  @relation(fields: [businessId, deviceId], references: [businessId, id], onDelete: Restrict)
+  cashAccount           Account           @relation(fields: [businessId, cashAccountId], references: [businessId, id], onDelete: Restrict)
+  openedByUser          User              @relation("CashSessionOpenedBy", fields: [openedByUserId], references: [id], onDelete: Restrict)
+  closedByUser          User?             @relation("CashSessionClosedBy", fields: [closedByUserId], references: [id], onDelete: Restrict)
+
+  @@unique([businessId, id])
+  @@unique([businessId, sessionNumber])
+  @@index([businessId, locationId, status])
+  @@index([businessId, cashAccountId, status])
+  @@map("cash_sessions")
 }

@@ -9,6 +9,7 @@ import { ReturnsPage } from "./pages/ReturnsPage";
 import { StockAdjustmentsPage } from "./pages/StockAdjustmentsPage";
 import { PaymentsPage } from "./pages/PaymentsPage";
 import { ExpensesPage } from "./pages/ExpensesPage";
+import { ReportsPage } from "./pages/ReportsPage";
 import { PlannedPage } from "./pages/PlannedPage";
 import { PreviewProvider } from "./preview/PreviewProvider";
 import { DirectoryPage } from "./pages/DirectoryPage";
@@ -16,9 +17,7 @@ import { SettingsPage } from "./pages/SettingsPage";
 import { AccountSetupPage } from "./pages/AccountSetupPage";
 import { AuthProvider } from "./context/AuthContext";
 
-const planned = [
-  ["reports", "Reports", "Business reports with explicit data coverage"],
-];
+const planned: [string, string, string][] = [];
 
 export default function App() {
   return (
@@ -35,6 +34,7 @@ export default function App() {
             <Route path="/returns" element={<ReturnsPage />} />
             <Route path="/payments" element={<PaymentsPage />} />
             <Route path="/expenses" element={<ExpensesPage />} />
+            <Route path="/reports" element={<ReportsPage />} />
             <Route path="/stock/adjustments" element={<StockAdjustmentsPage />} />
             <Route
               path="/parties"

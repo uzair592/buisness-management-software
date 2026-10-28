@@ -272,3 +272,174 @@ export const expenseSummarySchema = z.object({
   postedAt: z.string().nullable(),
 });
 export type ExpenseSummary = z.infer<typeof expenseSummarySchema>;
+
+// Cash Sessions & Register Close
+export const cashSessionStatusSchema = z.enum(["Open", "Closed"]);
+export type CashSessionStatus = z.infer<typeof cashSessionStatusSchema>;
+
+export const openCashSessionInputSchema = z.object({
+  locationId: z.string().uuid(),
+  deviceId: z.string().uuid(),
+  cashAccountId: z.string().uuid(),
+  openingFloat: z.string().regex(/^\d{1,30}(?:\.\d{1,4})?$/).default("0.00"),
+});
+export type OpenCashSessionInput = z.infer<typeof openCashSessionInputSchema>;
+
+export const closeCashSessionInputSchema = z.object({
+  countedAmount: z.string().regex(/^\d{1,30}(?:\.\d{1,4})?$/),
+  varianceReason: z.string().trim().max(1000).optional().nullable(),
+});
+export type CloseCashSessionInput = z.infer<typeof closeCashSessionInputSchema>;
+
+export const cashSessionSummarySchema = z.object({
+  id: z.string().uuid(),
+  sessionNumber: z.string(),
+  locationId: z.string().uuid(),
+  locationName: z.string().optional(),
+  deviceId: z.string().uuid(),
+  deviceName: z.string().optional(),
+  cashAccountId: z.string().uuid(),
+  cashAccountName: z.string().optional(),
+  openedAt: z.string(),
+  closedAt: z.string().nullable(),
+  openedByUserId: z.string().uuid(),
+  openedByUserName: z.string().optional(),
+  closedByUserId: z.string().uuid().nullable(),
+  closedByUserName: z.string().optional().nullable(),
+  openingFloat: z.string(),
+  countedAmount: z.string().nullable(),
+  expectedAmount: z.string().nullable(),
+  varianceAmount: z.string().nullable(),
+  varianceReason: z.string().nullable(),
+  status: cashSessionStatusSchema,
+  closedWatermarkCursor: z.string().nullable(),
+  createdAt: z.string(),
+});
+export type CashSessionSummary = z.infer<typeof cashSessionSummarySchema>;
+
+// Reports & Financial Statements
+export const profitAndLossReportSchema = z.object({
+  period: z.object({
+    startDate: z.string(),
+    endDate: z.string(),
+  }),
+  revenue: z.object({
+    grossSales: z.string(),
+    salesReturns: z.string(),
+    netSales: z.string(),
+  }),
+  cogs: z.object({
+    salesCogs: z.string(),
+    deficitSettlements: z.string(),
+    returnRestockReversals: z.string(),
+    netCogs: z.string(),
+  }),
+  grossProfit: z.object({
+    amount: z.string(),
+    marginPercentage: z.string(),
+  }),
+  expenses: z.object({
+    categories: z.array(
+      z.object({
+        id: z.string(),
+        name: z.string(),
+        amount: z.string(),
+      }),
+    ),
+    totalExpenses: z.string(),
+  }),
+  netOperatingProfit: z.string(),
+  coverage: z.object({
+    openDeficitsCount: z.number(),
+    isProvisional: z.boolean(),
+  }),
+});
+export type ProfitAndLossReport = z.infer<typeof profitAndLossReportSchema>;
+
+export const trialBalanceReportSchema = z.object({
+  asOfDate: z.string(),
+  accounts: z.array(
+    z.object({
+      id: z.string(),
+      code: z.string(),
+      name: z.string(),
+      kind: z.string(),
+      totalDebit: z.string(),
+      totalCredit: z.string(),
+      netBalance: z.string(),
+      netKind: z.enum(["Debit", "Credit", "Zero"]),
+    }),
+  ),
+  totalDebits: z.string(),
+  totalCredits: z.string(),
+  isBalanced: z.boolean(),
+});
+export type TrialBalanceReport = z.infer<typeof trialBalanceReportSchema>;
+
+export const balanceSheetReportSchema = z.object({
+  asOfDate: z.string(),
+  assets: z.object({
+    cashAndBank: z.string(),
+    accountsReceivable: z.string(),
+    inventoryValue: z.string(),
+    taxAsset: z.string(),
+    totalAssets: z.string(),
+  }),
+  liabilities: z.object({
+    accountsPayable: z.string(),
+    taxLiability: z.string(),
+    customerAdvances: z.string(),
+    totalLiabilities: z.string(),
+  }),
+  equity: z.object({
+    openingCapital: z.string(),
+    currentPeriodProfit: z.string(),
+    totalEquity: z.string(),
+  }),
+  isBalanced: z.boolean(),
+});
+export type BalanceSheetReport = z.infer<typeof balanceSheetReportSchema>;
+
+export const stockValuationReportSchema = z.object({
+  items: z.array(
+    z.object({
+      id: z.string(),
+      sku: z.string().nullable(),
+      name: z.string(),
+      categoryName: z.string().nullable(),
+      unitCode: z.string(),
+      quantity: z.string(),
+      movingAverageCost: z.string(),
+      totalValuation: z.string(),
+      isDeficit: z.boolean(),
+    }),
+  ),
+  totalQuantity: z.string(),
+  totalValuation: z.string(),
+  openDeficitsCount: z.number(),
+});
+export type StockValuationReport = z.infer<typeof stockValuationReportSchema>;
+
+export const partyLedgerReportSchema = z.object({
+  party: z.object({
+    id: z.string(),
+    name: z.string(),
+    isCustomer: z.boolean(),
+    isSupplier: z.boolean(),
+  }),
+  totalReceivableDue: z.string(),
+  totalPayableDue: z.string(),
+  unallocatedAdvance: z.string(),
+  entries: z.array(
+    z.object({
+      date: z.string(),
+      documentNumber: z.string(),
+      documentType: z.string(),
+      reference: z.string().nullable(),
+      debit: z.string(),
+      credit: z.string(),
+      runningBalance: z.string(),
+    }),
+  ),
+});
+export type PartyLedgerReport = z.infer<typeof partyLedgerReportSchema>;

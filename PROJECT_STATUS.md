@@ -14,7 +14,7 @@ Last planning update: 2026-10-20.
 | M06 Online web cutover | PR #15 and #16 merged; deployment gate open | New offline issue and intake removed; old browser-issued work kept for encrypted recovery. [PR #16 CI](https://github.com/uzair592/buisness-management-software/actions/runs/39479468804) passed PostgreSQL, runtime and 19 browser cases. Real legacy issued-work inventory/reconciliation is still required before deployment. |
 | M07 Purchases and money | Complete on `milestone-07-payments-and-expenses` | Online money transfer (PR #17); Purchase bills with inward stock receipt and moving average valuation; Payment In, Payment Out with invoice allocation & unallocated advance; Business Expenses with categories & cash balance guards ([M07 evidence](docs/evidence/m07/README.md)) |
 | M08 Returns and inventory lifecycle | Complete on `milestone-08-returns-and-stock` | Customer credit notes (CN), supplier debit notes (DN), refunds, stock count variances, approved physical damage/loss write-offs, and deterministic deficit cost reconciliation ([M08 evidence](docs/evidence/m08/README.md)) |
-| M09 Reports and reconciliation | Not started | — |
+| M09 Reports and reconciliation | Complete on `milestone-09-reports-and-reconciliation` | Authoritative double-entry Profit & Loss, Balance Sheet, Trial Balance, Stock Valuation, Party running ledgers, and Cash Register Session reconciliation ([M09 evidence](docs/evidence/m09/README.md)) |
 | M10 UX, printing and installation | Not started | — |
 | M11 Backup, import and operations | Not started | — |
 | M12 Quotes and warehouse workflows | Not started | — |
@@ -296,6 +296,65 @@ PR #7 [restored the M03 foundation onto main](https://github.com/uzair592/buisne
   - `pnpm test:db`: Passed 5 real PostgreSQL test suites (`tests/db.test.ts`, `tests/db-isolation.test.ts`, `tests/identity-api.test.ts`).
   - `pnpm test:runtime`: Passed compiled API server startup and DB readiness test.
   - `pnpm test:e2e`: Passed all 13 Playwright browser E2E tests across 1366×768, 1920×1080, and 390×844 viewports.
+
+## Milestone 09: Authoritative double-entry financial statements, stock valuation, and cash register reconciliation (`milestone-09-reports-and-reconciliation`)
+
+- **Additive PostgreSQL Migration (`20261024000000_m09_reports_and_cash_close`)**:
+  - Adds sequential counter `cash_session_sequence` to `businesses`.
+  - Creates table `cash_sessions` with composite tenant foreign keys `(business_id, id)`, tracking location, register device, cash drawer account, opened/closed user, opening float, real-time counted cash, expected cash, variance, mandatory variance reason, status (`Open`/`Closed`), and `closed_watermark_cursor`.
+  - Enforces integrity with check constraints:
+    - `cash_session_closed_complete`: guarantees that when a session is marked `Closed`, `closed_at`, `closed_by_user_id`, `counted_amount`, `expected_amount`, and `variance_amount` are non-null.
+    - `cash_session_variance_reason_required`: strictly enforces non-empty `variance_reason` whenever `counted_amount != expected_amount`.
+  - Enables and forces PostgreSQL Row Level Security (RLS) on `cash_sessions` with tenant isolation policy for `bms_runtime`.
+- **Domain Arithmetic & Financial Statements (`apps/api/src/reports.ts`, `apps/api/src/cash-sessions.ts`)**:
+  - `Profit & Loss Statement` (`getProfitAndLossReport`):
+    - Operating Revenue: Gross sales excluding tax minus sales returns contra-revenue.
+    - Cost of Goods Sold (COGS): Standard invoice COGS, provisional deficit settlements, minus return restock cost reversals.
+    - Gross Profit: Net sales minus Net COGS, with exact margin percentage.
+    - Operating Expenses: Breakdown categorized by expense heads and total operating expenditures.
+    - Net Operating Profit: Gross profit minus total operating expenses.
+    - Coverage & Provisional Deficit indicator: Highlights open deficits and provisional inventory state.
+  - `Balance Sheet & Trial Balance` (`getBalanceSheetReport`, `getTrialBalanceReport`):
+    - Double-Entry Balance Sheet:
+      - Assets: Cash & Bank Liquid Funds + Accounts Receivable (`OPEN_RECEIVABLE`) + Stock Valuation (`OPEN_INVENTORY`) + Input Tax Asset.
+      - Liabilities: Accounts Payable (`OPEN_PAYABLE`) + Sales Tax Liability (`SALE_TAX`) + Customer Advances.
+      - Equity: Opening Capital (`OPEN_EQUITY`) + Current Period Net Profit.
+      - Double-entry balance invariant: `Total Assets === Total Liabilities + Total Equity`.
+    - Trial Balance: Full chart of accounts debit/credit balances; confirms `totalDebits === totalCredits`.
+  - `Stock Valuation Register` (`getStockValuationReport`):
+    - Weighted moving average cost per item, on-hand physical stock quantity, total valuation, and deficit detection.
+  - `Party Running Ledgers` (`getPartyLedgerReport`):
+    - Chronological running statement of account with Sales Invoices, Customer Payments, Credit Notes, Purchase Bills, Supplier Payments, and Debit Notes.
+  - `Cash Register Sessions & Shift Close` (`apps/api/src/cash-sessions.ts`):
+    - Shift opening with float balance and active conflict prevention.
+    - Dynamic real-time expected till calculation aggregating sales cash, customer receipts, bank/cash transfers, supplier payouts, operating expenses, and cash refunds.
+    - Shift count & close with variance calculation, mandatory reason audit note on discrepancy, and server sync cursor watermark capture.
+- **Backend Fastify Routes (`apps/api/src/routes/`)**:
+  - `reports.ts`:
+    - `GET /v1/reports/profit-and-loss`: Filterable by start/end dates and location.
+    - `GET /v1/reports/trial-balance`: Debits, credits, and net balances as of date.
+    - `GET /v1/reports/balance-sheet`: Assets, liabilities, equity, and balance flag as of date.
+    - `GET /v1/reports/stock-summary`: Item quantities, moving average costs, valuation, and deficit counts.
+    - `GET /v1/reports/party-ledger/:partyId`: Chronological running dues ledger.
+  - `cash-sessions.ts`:
+    - `GET /v1/cash-sessions/workspace`: Locations, active terminal devices, and cash drawer accounts.
+    - `GET /v1/cash-sessions/current`: Active open shift with live calculated expected float and inflows/outflows.
+    - `GET /v1/cash-sessions`: Shift close audit history.
+    - `POST /v1/cash-sessions/open`: Open session with initial float.
+    - `POST /v1/cash-sessions/:id/close`: Reconcile drawer count, calculate variance, and freeze watermark.
+- **Frontend Dashboard (`apps/web/src/pages/ReportsPage.tsx`)**:
+  - Fully responsive, accessible tabbed UI:
+    - Executive Overview cards: Net Sales Revenue, Gross Margin, Net Operating Profit, Inventory Valuation, Cash & Bank Funds, Open Receivables, Open Payables.
+    - Tab 1: Profit & Loss Statement with date filters and coverage status.
+    - Tab 2: Balance Sheet & Full Trial Balance with balanced indicator badge.
+    - Tab 3: Stock Valuation & Moving Average Cost Register.
+    - Tab 4: Party Statement of Account running ledgers.
+    - Tab 5: Cash Register Shift Close & Session History with modal workflows.
+  - Exact `Reports` heading and mobile 390px horizontal overflow compliance (`flex-wrap`).
+- **Validation**:
+  - `pnpm check`: Passed (0 ESLint errors/warnings, strict TypeScript check across contracts/db/domain/ui/api/web, builds passing, 29 unit/domain tests passing).
+  - `pnpm test:db`: Passed all 15 real PostgreSQL integration test suites (15/15) under `bms_runtime` role and RLS (`tests/reports-db.test.ts`).
+  - `pnpm test:e2e`: Passed all 24 Playwright browser E2E test suites (24/24) including `tests/e2e/reports.spec.ts` and `tests/e2e/shell.spec.ts` across 1366, 1920, and 390 mobile viewports.
 
 ## M00 validation
 

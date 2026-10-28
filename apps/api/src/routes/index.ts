@@ -13,6 +13,8 @@ import { returnsRoutes } from "./returns.js";
 import { stockRoutes } from "./stock.js";
 import { registerPaymentRoutes } from "./payments.js";
 import { registerExpenseRoutes } from "./expenses.js";
+import { registerCashSessionRoutes } from "./cash-sessions.js";
+import { registerReportRoutes } from "./reports.js";
 
 export * from "./context.js";
 
@@ -30,4 +32,6 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps) {
   stockRoutes(app, deps);
   registerPaymentRoutes(app, deps);
   registerExpenseRoutes(app, deps);
+  registerCashSessionRoutes(app, deps);
+  registerReportRoutes(app, deps);
 }
