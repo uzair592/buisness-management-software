@@ -65,6 +65,9 @@ model Business {
   paymentOutSequence     Int                      @default(0) @map("payment_out_sequence") @db.Integer
   expenseSequence        Int                      @default(0) @map("expense_sequence") @db.Integer
   cashSessionSequence    Int                      @default(0) @map("cash_session_sequence") @db.Integer
+  quotationSequence      Int                      @default(0) @map("quotation_sequence") @db.Integer
+  purchaseOrderSequence  Int                      @default(0) @map("purchase_order_sequence") @db.Integer
+  stockTransferSequence  Int                      @default(0) @map("stock_transfer_sequence") @db.Integer
   purchases              PurchaseDocument[]
   creditNotes            CreditNote[]
   stockAdjustments       StockAdjustment[]
@@ -72,6 +75,9 @@ model Business {
   paymentAllocations     PaymentAllocation[]
   expenses               Expense[]
   cashSessions           CashSession[]
+  quotations             Quotation[]
+  purchaseOrders         PurchaseOrder[]
+  stockTransfers         StockTransfer[]
 
   @@map("businesses")
 }
@@ -92,6 +98,9 @@ model Location {
   creditNotes       CreditNote[]
   stockAdjustments  StockAdjustment[]
   cashSessions      CashSession[]
+  purchaseOrders    PurchaseOrder[]
+  stockTransfersSource StockTransfer[]   @relation("TransferSourceLocation")
+  stockTransfersDest   StockTransfer[]   @relation("TransferDestLocation")
 
   @@unique([businessId, id])
   @@unique([businessId, code])
@@ -552,6 +561,8 @@ model TaxProfile {
   createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz
   business   Business  @relation(fields: [businessId], references: [id], onDelete: Restrict)
   items      Item[]
+  quotationLines QuotationLine[]
+  purchaseOrderLines PurchaseOrderLine[]
 
   @@unique([businessId, id])
   @@unique([businessId, name])
@@ -583,6 +594,9 @@ model Item {
   purchaseLines  PurchaseLine[]
   creditNoteLines CreditNoteLine[]
   stockAdjustments StockAdjustment[]
+  quotationLines   QuotationLine[]
+  purchaseOrderLines PurchaseOrderLine[]
+  stockTransferLines StockTransferLine[]
 
   @@unique([businessId, id])
   @@unique([businessId, sku])
@@ -625,6 +639,8 @@ model Party {
   purchaseDocuments PurchaseDocument[]
   creditNotes      CreditNote[]
   payments         Payment[]
+  quotations       Quotation[]
+  purchaseOrders   PurchaseOrder[]
 
   @@unique([businessId, id])
   @@index([businessId, name, id], map: "parties_search")
@@ -912,4 +928,146 @@ model CashSession {
   @@index([businessId, locationId, status])
   @@index([businessId, cashAccountId, status])
   @@map("cash_sessions")
+}
+
+model Quotation {
+  id         String          @id @default(uuid()) @db.Uuid
+  businessId String          @map("business_id") @db.Uuid
+  partyId    String          @map("party_id") @db.Uuid
+  number     String          @db.VarChar(40)
+  status     String          @default("Draft") @db.VarChar(25)
+  validUntil DateTime?       @map("valid_until") @db.Timestamptz
+  subtotal   Decimal         @default(0) @db.Decimal(38, 2)
+  taxTotal   Decimal         @default(0) @map("tax_total") @db.Decimal(38, 2)
+  grandTotal Decimal         @default(0) @map("grand_total") @db.Decimal(38, 2)
+  notes      String?         @db.Text
+  snapshot   Json            @default("{}")
+  version    Int             @default(1)
+  createdAt  DateTime        @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt  DateTime        @updatedAt @map("updated_at") @db.Timestamptz
+
+  business   Business        @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  party      Party           @relation(fields: [businessId, partyId], references: [businessId, id], onDelete: Restrict)
+  lines      QuotationLine[]
+
+  @@unique([businessId, id])
+  @@unique([businessId, number])
+  @@index([businessId, partyId, status])
+  @@map("quotations")
+}
+
+model QuotationLine {
+  id                String      @id @default(uuid()) @db.Uuid
+  businessId        String      @map("business_id") @db.Uuid
+  quotationId       String      @map("quotation_id") @db.Uuid
+  itemId            String      @map("item_id") @db.Uuid
+  quantity          Decimal     @db.Decimal(38, 6)
+  convertedQuantity Decimal     @default(0) @map("converted_quantity") @db.Decimal(38, 6)
+  unitPrice         Decimal     @map("unit_price") @db.Decimal(38, 2)
+  taxProfileId      String?     @map("tax_profile_id") @db.Uuid
+  taxAmount         Decimal     @default(0) @map("tax_amount") @db.Decimal(38, 2)
+  lineTotal         Decimal     @map("line_total") @db.Decimal(38, 2)
+
+  quotation         Quotation   @relation(fields: [businessId, quotationId], references: [businessId, id], onDelete: Cascade)
+  item              Item        @relation(fields: [businessId, itemId], references: [businessId, id], onDelete: Restrict)
+  taxProfile        TaxProfile? @relation(fields: [businessId, taxProfileId], references: [businessId, id], onDelete: Restrict)
+
+  @@unique([businessId, id])
+  @@index([businessId, quotationId])
+  @@map("quotation_lines")
+}
+
+model PurchaseOrder {
+  id                   String              @id @default(uuid()) @db.Uuid
+  businessId           String              @map("business_id") @db.Uuid
+  partyId              String              @map("party_id") @db.Uuid
+  locationId           String              @map("location_id") @db.Uuid
+  number               String              @db.VarChar(40)
+  status               String              @default("Draft") @db.VarChar(25)
+  expectedDeliveryDate DateTime?           @map("expected_delivery_date") @db.Timestamptz
+  subtotal             Decimal             @default(0) @db.Decimal(38, 2)
+  taxTotal             Decimal             @default(0) @map("tax_total") @db.Decimal(38, 2)
+  grandTotal           Decimal             @default(0) @map("grand_total") @db.Decimal(38, 2)
+  notes                String?             @db.Text
+  snapshot             Json                @default("{}")
+  version              Int                 @default(1)
+  createdAt            DateTime            @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt            DateTime            @updatedAt @map("updated_at") @db.Timestamptz
+
+  business             Business            @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  party                Party               @relation(fields: [businessId, partyId], references: [businessId, id], onDelete: Restrict)
+  location             Location            @relation(fields: [businessId, locationId], references: [businessId, id], onDelete: Restrict)
+  lines                PurchaseOrderLine[]
+
+  @@unique([businessId, id])
+  @@unique([businessId, number])
+  @@index([businessId, partyId, status])
+  @@map("purchase_orders")
+}
+
+model PurchaseOrderLine {
+  id                String        @id @default(uuid()) @db.Uuid
+  businessId        String        @map("business_id") @db.Uuid
+  purchaseOrderId   String        @map("purchase_order_id") @db.Uuid
+  itemId            String        @map("item_id") @db.Uuid
+  quantity          Decimal       @db.Decimal(38, 6)
+  convertedQuantity Decimal       @default(0) @map("converted_quantity") @db.Decimal(38, 6)
+  unitPrice         Decimal       @map("unit_price") @db.Decimal(38, 2)
+  taxProfileId      String?       @map("tax_profile_id") @db.Uuid
+  taxAmount         Decimal       @default(0) @map("tax_amount") @db.Decimal(38, 2)
+  lineTotal         Decimal       @map("line_total") @db.Decimal(38, 2)
+
+  purchaseOrder     PurchaseOrder @relation(fields: [businessId, purchaseOrderId], references: [businessId, id], onDelete: Cascade)
+  item              Item          @relation(fields: [businessId, itemId], references: [businessId, id], onDelete: Restrict)
+  taxProfile        TaxProfile?   @relation(fields: [businessId, taxProfileId], references: [businessId, id], onDelete: Restrict)
+
+  @@unique([businessId, id])
+  @@index([businessId, purchaseOrderId])
+  @@map("purchase_order_lines")
+}
+
+model StockTransfer {
+  id                    String              @id @default(uuid()) @db.Uuid
+  businessId            String              @map("business_id") @db.Uuid
+  number                String              @db.VarChar(40)
+  sourceLocationId      String              @map("source_location_id") @db.Uuid
+  destinationLocationId String              @map("destination_location_id") @db.Uuid
+  status                String              @default("Draft") @db.VarChar(25)
+  dispatchedAt          DateTime?           @map("dispatched_at") @db.Timestamptz
+  receivedAt            DateTime?           @map("received_at") @db.Timestamptz
+  notes                 String?             @db.Text
+  snapshot              Json                @default("{}")
+  version               Int                 @default(1)
+  createdAt             DateTime            @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt             DateTime            @updatedAt @map("updated_at") @db.Timestamptz
+
+  business              Business            @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  sourceLocation        Location            @relation("TransferSourceLocation", fields: [businessId, sourceLocationId], references: [businessId, id], onDelete: Restrict)
+  destinationLocation   Location            @relation("TransferDestLocation", fields: [businessId, destinationLocationId], references: [businessId, id], onDelete: Restrict)
+  lines                 StockTransferLine[]
+
+  @@unique([businessId, id])
+  @@unique([businessId, number])
+  @@index([businessId, sourceLocationId, destinationLocationId, status])
+  @@map("stock_transfers")
+}
+
+model StockTransferLine {
+  id                 String        @id @default(uuid()) @db.Uuid
+  businessId         String        @map("business_id") @db.Uuid
+  transferId         String        @map("transfer_id") @db.Uuid
+  itemId             String        @map("item_id") @db.Uuid
+  dispatchedQuantity Decimal       @map("dispatched_quantity") @db.Decimal(38, 6)
+  receivedQuantity   Decimal       @default(0) @map("received_quantity") @db.Decimal(38, 6)
+  lossQuantity       Decimal       @default(0) @map("loss_quantity") @db.Decimal(38, 6)
+  lossReason         String?       @map("loss_reason") @db.Text
+  unitCost           Decimal       @default(0) @map("unit_cost") @db.Decimal(38, 2)
+  lineCost           Decimal       @default(0) @map("line_cost") @db.Decimal(38, 2)
+
+  transfer           StockTransfer @relation(fields: [businessId, transferId], references: [businessId, id], onDelete: Cascade)
+  item               Item          @relation(fields: [businessId, itemId], references: [businessId, id], onDelete: Restrict)
+
+  @@unique([businessId, id])
+  @@index([businessId, transferId])
+  @@map("stock_transfer_lines")
 }

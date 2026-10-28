@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { z } from "zod";
 import {
   enrollDeviceSchema,
   revokeDeviceSchema,
@@ -51,6 +52,45 @@ export function registerDeviceRoutes(app: FastifyInstance, deps: RouteDeps) {
         name: loc.name,
       })),
     );
+  });
+
+  app.post("/v1/locations", async (request, reply) => {
+    if (!requireAuth(request, reply)) return;
+    const tenant = requireTenantContext(request, reply);
+    if (!tenant) return;
+    if (!verifyCsrf(request, reply)) return;
+    if (!["Owner", "Accountant"].includes(tenant.membership.role)) {
+      return reply.code(403).send({ error: "Location management permission required" });
+    }
+
+    const bodySchema = z.object({
+      code: z.string().trim().min(1).max(20),
+      name: z.string().trim().min(1).max(100),
+    });
+    const parsed = bodySchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "Code and name are required for a location" });
+    }
+
+    const client = requireDb(deps.db);
+    return withTenantContext(client, { businessId: tenant.businessId, userId: request.user.id }, async (tx) => {
+      const existing = await tx.location.findFirst({
+        where: { businessId: tenant.businessId, code: parsed.data.code },
+      });
+      if (existing) {
+        return reply.code(409).send({ error: "Location code already exists" });
+      }
+
+      const created = await tx.location.create({
+        data: {
+          businessId: tenant.businessId,
+          code: parsed.data.code,
+          name: parsed.data.name,
+        },
+      });
+
+      return reply.code(201).send(created);
+    });
   });
 
   app.get("/v1/devices", async (request, reply) => {

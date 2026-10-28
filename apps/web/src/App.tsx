@@ -6,6 +6,9 @@ import { NewSalePage } from "./pages/NewSalePage";
 import { PurchasesPage } from "./pages/PurchasesPage";
 import { NewPurchasePage } from "./pages/NewPurchasePage";
 import { ReturnsPage } from "./pages/ReturnsPage";
+import { QuotesPage } from "./pages/QuotesPage";
+import { PurchaseOrdersPage } from "./pages/PurchaseOrdersPage";
+import { StockTransfersPage } from "./pages/StockTransfersPage";
 import { StockAdjustmentsPage } from "./pages/StockAdjustmentsPage";
 import { PaymentsPage } from "./pages/PaymentsPage";
 import { ExpensesPage } from "./pages/ExpensesPage";
@@ -32,6 +35,9 @@ export default function App() {
             <Route path="/purchases" element={<PurchasesPage />} />
             <Route path="/purchases/new" element={<NewPurchasePage />} />
             <Route path="/returns" element={<ReturnsPage />} />
+            <Route path="/quotes" element={<QuotesPage />} />
+            <Route path="/purchase-orders" element={<PurchaseOrdersPage />} />
+            <Route path="/stock/transfers" element={<StockTransfersPage />} />
             <Route path="/payments" element={<PaymentsPage />} />
             <Route path="/expenses" element={<ExpensesPage />} />
             <Route path="/reports" element={<ReportsPage />} />

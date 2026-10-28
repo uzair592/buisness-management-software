@@ -443,3 +443,121 @@ export const partyLedgerReportSchema = z.object({
   ),
 });
 export type PartyLedgerReport = z.infer<typeof partyLedgerReportSchema>;
+
+// Milestone 12: Quotations, Purchase Orders & Warehouse Transfers
+export const quotationStatusSchema = z.enum([
+  "Draft",
+  "Issued",
+  "Accepted",
+  "Expired",
+  "PartiallyFulfilled",
+  "Fulfilled",
+  "Closed",
+]);
+export type QuotationStatus = z.infer<typeof quotationStatusSchema>;
+
+export const quotationLineInputSchema = z.object({
+  itemId: z.string().uuid(),
+  quantity: z.string().regex(/^\d+(?:\.\d{1,6})?$/, "Quantity must be a positive decimal"),
+  unitPrice: z.string().regex(/^\d+(?:\.\d{1,2})?$/, "Price must be a non-negative decimal"),
+  taxProfileId: z.string().uuid().nullable().optional(),
+});
+export type QuotationLineInput = z.infer<typeof quotationLineInputSchema>;
+
+export const quotationInputSchema = z.object({
+  partyId: z.string().uuid(),
+  validUntil: z.string().datetime().nullable().optional(),
+  notes: z.string().max(1000).nullable().optional(),
+  lines: z.array(quotationLineInputSchema).min(1, "Quotation requires at least one line"),
+});
+export type QuotationInput = z.infer<typeof quotationInputSchema>;
+
+export const quotationConvertLineInputSchema = z.object({
+  lineId: z.string().uuid(),
+  quantityToConvert: z.string().regex(/^\d+(?:\.\d{1,6})?$/, "Quantity must be a positive decimal"),
+});
+
+export const quotationConvertInputSchema = z.object({
+  locationId: z.string().uuid().optional(),
+  deviceEnrollmentId: z.string().uuid().optional(),
+  lines: z.array(quotationConvertLineInputSchema).min(1, "Select at least one line to convert"),
+});
+export type QuotationConvertInput = z.infer<typeof quotationConvertInputSchema>;
+
+export const purchaseOrderStatusSchema = z.enum([
+  "Draft",
+  "Issued",
+  "Accepted",
+  "Expired",
+  "PartiallyFulfilled",
+  "Fulfilled",
+  "Closed",
+]);
+export type PurchaseOrderStatus = z.infer<typeof purchaseOrderStatusSchema>;
+
+export const purchaseOrderLineInputSchema = z.object({
+  itemId: z.string().uuid(),
+  quantity: z.string().regex(/^\d+(?:\.\d{1,6})?$/, "Quantity must be a positive decimal"),
+  unitPrice: z.string().regex(/^\d+(?:\.\d{1,2})?$/, "Price must be a non-negative decimal"),
+  taxProfileId: z.string().uuid().nullable().optional(),
+});
+export type PurchaseOrderLineInput = z.infer<typeof purchaseOrderLineInputSchema>;
+
+export const purchaseOrderInputSchema = z.object({
+  partyId: z.string().uuid(),
+  locationId: z.string().uuid(),
+  expectedDeliveryDate: z.string().datetime().nullable().optional(),
+  notes: z.string().max(1000).nullable().optional(),
+  lines: z.array(purchaseOrderLineInputSchema).min(1, "Purchase order requires at least one line"),
+});
+export type PurchaseOrderInput = z.infer<typeof purchaseOrderInputSchema>;
+
+export const purchaseOrderConvertLineInputSchema = z.object({
+  lineId: z.string().uuid(),
+  quantityToConvert: z.string().regex(/^\d+(?:\.\d{1,6})?$/, "Quantity must be a positive decimal"),
+});
+
+export const purchaseOrderConvertInputSchema = z.object({
+  supplierInvoiceNumber: z.string().min(1, "Supplier invoice reference is required").max(120),
+  lines: z.array(purchaseOrderConvertLineInputSchema).min(1, "Select at least one line to convert"),
+});
+export type PurchaseOrderConvertInput = z.infer<typeof purchaseOrderConvertInputSchema>;
+
+export const stockTransferStatusSchema = z.enum([
+  "Draft",
+  "Dispatched",
+  "PartiallyReceived",
+  "Completed",
+  "Cancelled",
+]);
+export type StockTransferStatus = z.infer<typeof stockTransferStatusSchema>;
+
+export const stockTransferLineInputSchema = z.object({
+  itemId: z.string().uuid(),
+  quantity: z.string().regex(/^\d+(?:\.\d{1,6})?$/, "Quantity must be a positive decimal"),
+});
+export type StockTransferLineInput = z.infer<typeof stockTransferLineInputSchema>;
+
+export const stockTransferDispatchInputSchema = z.object({
+  sourceLocationId: z.string().uuid(),
+  destinationLocationId: z.string().uuid(),
+  notes: z.string().max(1000).nullable().optional(),
+  lines: z.array(stockTransferLineInputSchema).min(1, "Stock transfer requires at least one item"),
+}).refine((data) => data.sourceLocationId !== data.destinationLocationId, {
+  message: "Source and destination locations must be distinct",
+  path: ["destinationLocationId"],
+});
+export type StockTransferDispatchInput = z.infer<typeof stockTransferDispatchInputSchema>;
+
+export const stockTransferReceiveLineInputSchema = z.object({
+  lineId: z.string().uuid(),
+  receivedQuantity: z.string().regex(/^\d+(?:\.\d{1,6})?$/, "Received quantity must be a non-negative decimal"),
+  lossQuantity: z.string().regex(/^\d+(?:\.\d{1,6})?$/).optional().default("0"),
+  lossReason: z.string().max(500).optional(),
+});
+
+export const stockTransferReceiveInputSchema = z.object({
+  lines: z.array(stockTransferReceiveLineInputSchema).min(1, "Receive requires at least one line"),
+});
+export type StockTransferReceiveInput = z.infer<typeof stockTransferReceiveInputSchema>;
+

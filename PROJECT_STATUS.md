@@ -17,7 +17,7 @@ Last planning update: 2026-10-20.
 | M09 Reports and reconciliation | Complete on `milestone-09-reports-and-reconciliation` | Authoritative double-entry Profit & Loss, Balance Sheet, Trial Balance, Stock Valuation, Party running ledgers, and Cash Register Session reconciliation ([M09 evidence](docs/evidence/m09/README.md)) |
 | M10 UX, printing and installation | Complete on `milestone-10-ux-and-invoice-templates` | Viewport audits (1366, 1920, 390 mobile); A4, 80mm POS, and 58mm compact templates; snapshot reprint fidelity; logo & tax configuration; scoped print CSS; live connection status indicator ([M10 evidence](docs/evidence/m10/README.md)) |
 | M11 Backup, import and operations | Complete on `milestone-11-backup-import-and-operations` | Single-business encrypted `AES-256-GCM` archives, dataset epoch fencing on restore promotion, session/device invalidation, formula-safe CSV import/export with dry run, and operational runbooks ([M11 evidence](docs/evidence/m11/README.md)) |
-| M12 Quotes and warehouse workflows | Not started | — |
+| M12 Quotes and warehouse workflows | Complete on `milestone-12-quotes-and-warehouses` | Non-posting quotations with lifecycle states, partial conversion to Sales Invoices; non-posting Purchase Orders with conversion to Purchase Bills; inter-warehouse stock transfer dispatch & receipt with goods-in-transit tracking and approved transit loss with reason ([M12 evidence](docs/evidence/m12/README.md)) |
 | M13 Pilot and release | Not started | — |
 | M14 Optional commercial platform | Deferred | Requires product decision |
 
@@ -408,6 +408,38 @@ PR #7 [restored the M03 foundation onto main](https://github.com/uzair592/buisne
   - `pnpm check`: Passed (0 ESLint errors/warnings, strict TypeScript check across contracts/db/domain/ui/api/web, API/Web production builds, 29 domain unit tests passing).
   - `pnpm test:db`: Passed all 16 real PostgreSQL integration test suites (16/16) under `bms_runtime` role and RLS (`tests/backup-restore-db.test.ts`).
   - `pnpm test:e2e`: Passed all 26 Playwright browser E2E test suites (26/26) including dedicated `tests/e2e/backup-and-import.spec.ts` with 3 generated evidence screenshots in `docs/evidence/m11/`.
+
+## Milestone 12: Quotations, purchase orders, and warehouse transfers (`milestone-12-quotes-and-warehouses`)
+
+- **Additive PostgreSQL Migration (`20261028000000_m12_quotes_orders_and_transfers`)**:
+  - Adds sequential counters `quotation_sequence`, `purchase_order_sequence`, and `stock_transfer_sequence` to `businesses`.
+  - Creates tables `quotations`, `quotation_lines`, `purchase_orders`, `purchase_order_lines`, `stock_transfers`, and `stock_transfer_lines` with composite tenant foreign keys `(business_id, id)`.
+  - Enables and forces PostgreSQL Row Level Security (RLS) on all 6 new tables with `tenant_scope` policies and permissions granted to the restricted `bms_runtime` role.
+- **Domain Arithmetic & Conversion Protection (`@business/domain`)**:
+  - `validateQuoteConversion`: Validates exact decimal quantities, tracks converted vs remaining quantities, prevents over-conversion, and transitions status from `Issued` to `PartiallyFulfilled` or `Fulfilled`.
+  - `validatePurchaseOrderConversion`: Computes and enforces conversion limits into purchase bills.
+  - `validateStockTransferReceipt`: Reconciles goods-in-transit, requires mandatory loss reason when recording transit loss/damage, and determines `PartiallyReceived` or `Completed` statuses.
+- **Backend Domain Engines & Fastify Routes (`apps/api`)**:
+  - Non-posting commercial documents: issuing or expiring quotations or purchase orders produces zero ledger or stock effects.
+  - `quotes.ts`: Creation, lifecycle status transitions, and partial conversion into standard Sales Invoices (`postSale`) with atomic stock decrement and Accounts Receivable posting.
+  - `purchase-orders.ts`: Creation and conversion into standard Purchase Bills (`postPurchase`) with inward stock receipt and Accounts Payable dues.
+  - `stock-transfers.ts`: Inter-warehouse stock transfer dispatch and receipt using atomic sync-head locked posting.
+    - Dispatch decrements source location stock at moving average cost into goods-in-transit with zero phantom revenue or VAT.
+    - Receipt increments destination location stock and posts approved transit damage/loss with mandatory reason directly to inventory loss expense.
+  - Fastify routes registered:
+    - `/v1/quotes`, `/v1/quotes/:id`, `/v1/quotes/:id/convert-to-sale`, `/v1/quotes/:id/status`
+    - `/v1/purchase-orders`, `/v1/purchase-orders/:id`, `/v1/purchase-orders/:id/convert-to-bill`, `/v1/purchase-orders/:id/status`
+    - `/v1/stock-transfers`, `/v1/stock-transfers/:id`, `/v1/stock-transfers/dispatch`, `/v1/stock-transfers/:id/receive`
+    - `POST /v1/locations` for warehouse location management.
+- **Frontend UI (`apps/web`)**:
+  - `QuotesPage.tsx`: Quotation list with status badges, New Quotation form with line item calculation, and Convert to Sale Invoice modal.
+  - `PurchaseOrdersPage.tsx`: Purchase Order list, New PO form with supplier selection and delivery date, and Convert to Purchase Bill modal.
+  - `StockTransfersPage.tsx`: Inter-warehouse transfer dispatch form, in-transit status badges, and Receive Goods modal with transit damage and loss reason logging.
+  - Navigation: `/quotes`, `/purchase-orders`, and `/stock/transfers` routes in `App.tsx` and sidebar navigation in `Shell.tsx`.
+- **Validation**:
+  - `pnpm check`: Passed (0 ESLint errors/warnings, strict TypeScript check across all packages, API/Web production builds, 36 domain unit tests passing).
+  - `pnpm test:db`: Passed all 18 real PostgreSQL integration test suites (18/18) under `bms_runtime` role and RLS (`tests/quote-order-db.test.ts`, `tests/stock-transfer-db.test.ts`).
+  - `pnpm exec playwright test tests/e2e/quotes-and-transfers.spec.ts`: Passed E2E test verifying quotation creation, quotation conversion to sale, purchase order creation, purchase order conversion to purchase bill, and stock transfer dispatch & receipt with transit loss (5 screenshots in `docs/evidence/m12/`).
 
 ## M00 validation
 

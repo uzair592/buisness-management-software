@@ -17,6 +17,9 @@ import { registerCashSessionRoutes } from "./cash-sessions.js";
 import { registerReportRoutes } from "./reports.js";
 import { registerBackupRoutes } from "./backup.js";
 import { registerImportExportRoutes } from "./import-export.js";
+import { registerQuotesRoutes } from "./quotes.js";
+import { registerPurchaseOrdersRoutes } from "./purchase-orders.js";
+import { registerStockTransfersRoutes } from "./stock-transfers.js";
 
 export * from "./context.js";
 
@@ -38,4 +41,7 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps) {
   registerReportRoutes(app, deps);
   registerBackupRoutes(app, deps);
   registerImportExportRoutes(app, deps);
+  registerQuotesRoutes(app, deps);
+  registerPurchaseOrdersRoutes(app, deps);
+  registerStockTransfersRoutes(app, deps);
 }
