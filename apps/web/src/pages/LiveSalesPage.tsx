@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Panel, Table, EmptyState } from "@business/ui";
 import { useAuth } from "../context/AuthContext";
+import { PrintDocumentModal } from "../templates";
 
 type Summary = { id: string; number: string | null; status: "Draft" | "Posted"; total: string | null;
   paid: string | null; due: string | null; businessDate: string; party: { name: string } | null };
@@ -66,16 +67,48 @@ export function LiveSalesPage() {
       <div className="live-pagination"><button className="btn-secondary" disabled={page <= 1} onClick={() => update({ page: String(page - 1) })}>Previous</button>
         <span>Page {page}</span><button className="btn-secondary" disabled={!hasMore} onClick={() => update({ page: String(page + 1) })}>Next</button></div>
     </Panel>
-    {detail && <div className="sale-print"><Panel><div className="section-heading"><h2>{detail.number ?? "Saved draft"}</h2>
-      <button className="btn-secondary print-hide" disabled={detail.status !== "Posted"} onClick={() => window.print()}>Print saved receipt</button></div>
-      <p>{detail.snapshot.partyName ?? detail.party?.name ?? "Walk-in"} · {detail.businessDate.slice(0, 10)}</p>
-      {detail.status === "Posted" ? <><Table headers={["Item", "Qty", "Price", "Tax", "Total"]}>
-        {detail.snapshot.lines.map((line, index) => <tr key={index}><td>{line.name}</td><td>{line.quantity}</td>
-          <td>{line.unitPrice}</td><td>{line.calculated.tax}</td><td>{line.calculated.total}</td></tr>)}</Table>
-        <p><b>Total: {detail.snapshot.calculation.total}</b> · Paid: {detail.paid} · Due: {detail.due}</p>
-        <p>Cash change: {detail.snapshot.payment.change}</p>
-        {detail.payments.map((payment) => <p key={payment.id}>{payment.kind}: {payment.applied}{payment.reference ? ` · Reference ${payment.reference}` : ""}</p>)}</> :
-        <p>This draft has not been issued or numbered.</p>}
-      <button className="btn-ghost print-hide" onClick={() => update({ open: "" })}>Close</button></Panel></div>}
+    {detail && (
+      <PrintDocumentModal
+        data={{
+          documentType: "Sale",
+          id: detail.id,
+          number: detail.number,
+          businessName:
+            (detail.snapshot as { businessName?: string }).businessName ??
+            auth.activeMembership?.businessName ??
+            "My Business",
+          businessDate: detail.businessDate,
+          status: detail.status,
+          isReprint: detail.status === "Posted",
+          customerOrSupplier: {
+            name: detail.snapshot.partyName ?? detail.party?.name ?? "Walk-in Customer",
+          },
+          lines: detail.snapshot.lines.map((l) => ({
+            name: l.name,
+            unitName: (l as { unitName?: string }).unitName,
+            quantity: l.quantity,
+            unitPrice: l.unitPrice,
+            discount: (l as { discount?: string }).discount,
+            taxPercent: (l as { tax?: { percent: string } }).tax?.percent,
+            total: l.calculated.total,
+          })),
+          calculation: {
+            base: detail.snapshot.calculation.base,
+            tax: detail.snapshot.calculation.tax,
+            documentDiscount: (detail.snapshot.calculation as { documentDiscount?: string }).documentDiscount,
+            total: detail.snapshot.calculation.total,
+          },
+          payment: {
+            total: detail.snapshot.calculation.total,
+            paid: detail.paid ?? "0",
+            due: detail.due ?? detail.snapshot.payment?.receivable ?? "0",
+            cashTendered: (detail.snapshot.payment as { cashTendered?: string }).cashTendered,
+            change: detail.snapshot.payment?.change ?? "0.00",
+            payments: detail.payments,
+          },
+        }}
+        onClose={() => update({ open: "" })}
+      />
+    )}
   </div>;
 }

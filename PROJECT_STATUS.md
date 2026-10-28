@@ -15,7 +15,7 @@ Last planning update: 2026-10-20.
 | M07 Purchases and money | Complete on `milestone-07-payments-and-expenses` | Online money transfer (PR #17); Purchase bills with inward stock receipt and moving average valuation; Payment In, Payment Out with invoice allocation & unallocated advance; Business Expenses with categories & cash balance guards ([M07 evidence](docs/evidence/m07/README.md)) |
 | M08 Returns and inventory lifecycle | Complete on `milestone-08-returns-and-stock` | Customer credit notes (CN), supplier debit notes (DN), refunds, stock count variances, approved physical damage/loss write-offs, and deterministic deficit cost reconciliation ([M08 evidence](docs/evidence/m08/README.md)) |
 | M09 Reports and reconciliation | Complete on `milestone-09-reports-and-reconciliation` | Authoritative double-entry Profit & Loss, Balance Sheet, Trial Balance, Stock Valuation, Party running ledgers, and Cash Register Session reconciliation ([M09 evidence](docs/evidence/m09/README.md)) |
-| M10 UX, printing and installation | Not started | — |
+| M10 UX, printing and installation | Complete on `milestone-10-ux-and-invoice-templates` | Viewport audits (1366, 1920, 390 mobile); A4, 80mm POS, and 58mm compact templates; snapshot reprint fidelity; logo & tax configuration; scoped print CSS; live connection status indicator ([M10 evidence](docs/evidence/m10/README.md)) |
 | M11 Backup, import and operations | Not started | — |
 | M12 Quotes and warehouse workflows | Not started | — |
 | M13 Pilot and release | Not started | — |
@@ -355,6 +355,35 @@ PR #7 [restored the M03 foundation onto main](https://github.com/uzair592/buisne
   - `pnpm check`: Passed (0 ESLint errors/warnings, strict TypeScript check across contracts/db/domain/ui/api/web, builds passing, 29 unit/domain tests passing).
   - `pnpm test:db`: Passed all 15 real PostgreSQL integration test suites (15/15) under `bms_runtime` role and RLS (`tests/reports-db.test.ts`).
   - `pnpm test:e2e`: Passed all 24 Playwright browser E2E test suites (24/24) including `tests/e2e/reports.spec.ts` and `tests/e2e/shell.spec.ts` across 1366, 1920, and 390 mobile viewports.
+
+## Milestone 10: Polished web UX, invoice templates & web printing (`milestone-10-ux-and-invoice-templates`)
+
+- **Responsive Viewport Audits (T19)**:
+  - Audited and verified all screens across 1366 × 768 (laptop POS), 1920 × 1080 (widescreen), and 390 × 844 (mobile touch).
+  - Touch targets enforced at $\ge 44\text{px}$ on mobile for billing inputs, quantity steppers, action buttons, and hamburger navigation.
+  - Resolved table clipping and enabled responsive horizontal scrolling without breaking layouts.
+- **Three Standard Printable Document Templates (T20)**:
+  - `A4 Full Page` (`A4InvoiceTemplate.tsx`): Formal tax invoice with customizable header, store logo (none/sm/md/lg), customer details, line items table with long description word-wrapping, unit, rate, discount, tax breakdown, grand total in PKR, formal amount in words, payment breakdown (cash/bank split, change, manual bank reference), terms & conditions, and authorized signatory box.
+  - `80mm Thermal (POS)` (`Thermal80mmTemplate.tsx`): 80mm roll POS counter receipt ($72\text{mm}$ printable width). Centered store header, bill metadata, compact item list, subtotal, tax, grand total, tender details, and scannable visual barcode block.
+  - `58mm Compact Thermal` (`Thermal58mmTemplate.tsx`): Portable/Bluetooth thermal receipt ($48\text{mm}$ printable width, 32-column layout) with tight two-line item listings.
+- **Reprint Snapshot Fidelity & Integrity**:
+  - Saved document reprints use the immutable document snapshot captured at commit time.
+  - Subsequent item edits, pricing updates, or catalogue changes do not alter historical receipt content.
+  - Explicit `*** REPRINT / DUPLICATE COPY ***` watermark is displayed on reprinted bills.
+- **Scoped Print CSS & Paper Cut Margins**:
+  - Scoped `@media print` rules ensure only the active document container is printed, hiding navigation bars, sidebars, headers, and buttons.
+  - Thermal roll page sizing (`@page { size: 80mm auto; margin: 0; }`) prevents unwanted blank sheet feeds or page cuts.
+  - Cut margins and blank feed spacers at receipt bottoms prevent driver cutters from clipping footer notes.
+- **Connection Awareness & Mobile Experience**:
+  - Live status indicator pill in the application header indicating `Live Online` (with pulse indicator) or `Offline`, with friendly reconnect guidance.
+  - Documented keyboard shortcuts (`Alt+S` for New Sale, `Alt+P` for Purchase, `Ctrl+Enter` to Save, `Escape` to close modals, `Ctrl+K` for command palette).
+- **Physical Printer / Hardware Documentation**:
+  - Hardware printer and cutter capabilities documented transparently in `docs/evidence/m10/README.md`.
+  - Browser `window.print()` outputs to OS print spooler drivers; direct ESC/POS knife cut commands (`GS V 66 0`) and cash drawer kick pulses (`ESC p 0 25 250`) require an OS driver auto-cut setting or local native bridge.
+- **Validation**:
+  - `pnpm check`: Passed (0 ESLint errors/warnings, strict TypeScript check across contracts/db/domain/ui/api/web, API/Web production builds, 29 domain unit tests passing).
+  - `pnpm test:db`: Passed all 15 real PostgreSQL integration test suites (15/15) under `bms_runtime` role and RLS.
+  - `pnpm test:e2e`: Passed all 25 Playwright browser E2E test suites (25/25) including dedicated `tests/e2e/print-and-ux.spec.ts` with 6 generated evidence screenshots in `docs/evidence/m10/`.
 
 ## M00 validation
 

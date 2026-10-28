@@ -10,6 +10,14 @@ import {
   PartitionedLocalDatabase,
 } from "../db/index";
 import { exportPendingRecovery, inspectPendingRecovery, listPendingPartitions, type PendingPartitionSummary } from "../db/recovery";
+import {
+  type PrintSettings,
+  type TemplateFormat,
+  type LogoSize,
+  loadPrintSettings,
+  savePrintSettings,
+  PrintDocumentModal,
+} from "../templates";
 
 export function SettingsPage() {
   const auth = useAuth();
@@ -70,6 +78,18 @@ export function SettingsPage() {
   const [inspection, setInspection] = useState<Awaited<ReturnType<typeof inspectPendingRecovery>> | null>(null);
   const [inspectionError, setInspectionError] = useState("");
   useEffect(() => { setInspection(null); setInspectionError(""); setInspectionPassphrase(""); }, [auth.selectedBusinessId]);
+
+  // Print & Invoice Templates state
+  const [printSettings, setPrintSettings] = useState<PrintSettings>(() => loadPrintSettings());
+  const [previewModalOpen, setPreviewModalOpen] = useState(false);
+  const [printSavedNotice, setPrintSavedNotice] = useState(false);
+
+  function handleUpdatePrintSettings(patch: Partial<PrintSettings>) {
+    const updated = savePrintSettings(patch);
+    setPrintSettings(updated);
+    setPrintSavedNotice(true);
+    setTimeout(() => setPrintSavedNotice(false), 2000);
+  }
 
   const refreshPendingPartitions = useCallback(async () => {
     if (!auth.user || !auth.selectedBusinessId) { setPendingPartitions([]); return; }
@@ -594,6 +614,173 @@ export function SettingsPage() {
         </div>
       </div>
 
+      {/* Invoice Templates & Print Settings */}
+      <div className="bg-white p-6 rounded-lg border shadow-sm space-y-6">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b pb-4">
+          <div>
+            <h2 className="text-base font-bold text-gray-900">Invoice Templates & Printing</h2>
+            <p className="text-xs text-gray-500 mt-1">
+              Configure invoice formats (A4 standard, 80mm thermal, 58mm compact), business logo, and tax numbering.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            {printSavedNotice && (
+              <span className="text-xs text-emerald-700 font-semibold bg-emerald-50 px-2.5 py-1 rounded border border-emerald-200">
+                Settings Saved
+              </span>
+            )}
+            <Button
+              type="button"
+              onClick={() => setPreviewModalOpen(true)}
+              className="btn-primary text-xs py-1.5 px-3"
+            >
+              Preview & Test Print
+            </Button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-gray-600 mb-1">
+              Default Format
+            </label>
+            <select
+              value={printSettings.template}
+              onChange={(e) => handleUpdatePrintSettings({ template: e.target.value as TemplateFormat })}
+              className="w-full px-3 py-2 border rounded-md text-sm bg-white"
+            >
+              <option value="a4">A4 Full Page (Formal Tax Invoice)</option>
+              <option value="80mm">80mm Thermal (POS Counter Receipt)</option>
+              <option value="58mm">58mm Thermal (Compact Roll Receipt)</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-gray-600 mb-1">
+              Custom Invoice Title
+            </label>
+            <input
+              type="text"
+              value={printSettings.customTitle}
+              onChange={(e) => handleUpdatePrintSettings({ customTitle: e.target.value })}
+              placeholder="e.g. TAX INVOICE, CASH MEMO"
+              className="w-full px-3 py-2 border rounded-md text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-gray-600 mb-1">
+              Tax / NTN / GST Number
+            </label>
+            <input
+              type="text"
+              value={printSettings.taxNumber}
+              onChange={(e) => handleUpdatePrintSettings({ taxNumber: e.target.value })}
+              placeholder="e.g. NTN: 1234567-8"
+              className="w-full px-3 py-2 border rounded-md text-sm"
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-gray-600 mb-1">
+              Business Phone (Print Header)
+            </label>
+            <input
+              type="text"
+              value={printSettings.businessPhone}
+              onChange={(e) => handleUpdatePrintSettings({ businessPhone: e.target.value })}
+              placeholder="e.g. +92 300 1234567"
+              className="w-full px-3 py-2 border rounded-md text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-gray-600 mb-1">
+              Business Address (Print Header)
+            </label>
+            <input
+              type="text"
+              value={printSettings.businessAddress}
+              onChange={(e) => handleUpdatePrintSettings({ businessAddress: e.target.value })}
+              placeholder="Shop #, Market, City"
+              className="w-full px-3 py-2 border rounded-md text-sm"
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="md:col-span-2">
+            <label className="block text-xs font-semibold uppercase tracking-wider text-gray-600 mb-1">
+              Logo Image URL (or Data URI)
+            </label>
+            <input
+              type="text"
+              value={printSettings.logoUrl}
+              onChange={(e) => handleUpdatePrintSettings({ logoUrl: e.target.value })}
+              placeholder="https://... or data:image/png;base64,..."
+              className="w-full px-3 py-2 border rounded-md text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-gray-600 mb-1">
+              Logo Display Size
+            </label>
+            <select
+              value={printSettings.logoSize}
+              onChange={(e) => handleUpdatePrintSettings({ logoSize: e.target.value as LogoSize })}
+              className="w-full px-3 py-2 border rounded-md text-sm bg-white"
+            >
+              <option value="none">Hidden (No Logo)</option>
+              <option value="sm">Small (Compact)</option>
+              <option value="md">Medium (Standard)</option>
+              <option value="lg">Large (Prominent)</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-xs font-semibold uppercase tracking-wider text-gray-600 mb-1">
+            Footer Terms & Conditions
+          </label>
+          <textarea
+            rows={2}
+            value={printSettings.footerNotes}
+            onChange={(e) => handleUpdatePrintSettings({ footerNotes: e.target.value })}
+            className="w-full px-3 py-2 border rounded-md text-sm resize-none"
+            placeholder="Terms, return policy, or thank you note"
+          />
+        </div>
+
+        <div className="flex flex-wrap gap-6 pt-2 border-t">
+          <label className="inline-flex items-center gap-2 text-xs text-gray-700 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={printSettings.showTaxDetails}
+              onChange={(e) => handleUpdatePrintSettings({ showTaxDetails: e.target.checked })}
+              className="rounded text-blue-600"
+            />
+            <span>Show Tax Breakdown Column</span>
+          </label>
+          <label className="inline-flex items-center gap-2 text-xs text-gray-700 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={printSettings.showSignature}
+              onChange={(e) => handleUpdatePrintSettings({ showSignature: e.target.checked })}
+              className="rounded text-blue-600"
+            />
+            <span>Show Authorized Signature Box (A4)</span>
+          </label>
+          <label className="inline-flex items-center gap-2 text-xs text-gray-700 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={printSettings.showReprintWatermark}
+              onChange={(e) => handleUpdatePrintSettings({ showReprintWatermark: e.target.checked })}
+              className="rounded text-blue-600"
+            />
+            <span>Show Distinct Reprint / Duplicate Badge on History Reprints</span>
+          </label>
+        </div>
+      </div>
+
       {/* Devices remain necessary for server-issued invoice numbers. */}
       <div className="bg-white p-6 rounded-lg border shadow-sm space-y-6">
         <div>
@@ -884,6 +1071,83 @@ export function SettingsPage() {
           </table>
         </div>
       </div>
+
+      {previewModalOpen && (
+        <PrintDocumentModal
+          data={{
+            documentType: "Sale",
+            id: "preview-inv-001",
+            number: "INV-2026-00042",
+            businessName: auth.activeMembership?.businessName ?? "Apex General Traders",
+            businessDate: new Date().toISOString(),
+            status: "Posted",
+            isReprint: false,
+            customerOrSupplier: {
+              name: "Al-Rehman General Store (Haji Usman)",
+              phone: "+92 300 9876543",
+              address: "Shop #14, Grain Market, Railway Road",
+              taxId: "NTN: 9876543-2",
+            },
+            lines: [
+              {
+                name: "Basmati Super Kernel Aged Rice (50kg Bag) Grade-A Polished Grain",
+                unitName: "Bag",
+                quantity: "5",
+                unitPrice: "8500.00",
+                discount: "500.00",
+                taxPercent: "0",
+                total: "42000.00",
+              },
+              {
+                name: "Refined White Granulated Sugar (50kg Sack)",
+                unitName: "Sack",
+                quantity: "3",
+                unitPrice: "7200.00",
+                taxPercent: "0",
+                total: "21600.00",
+              },
+              {
+                name: "Pure Mustard Cold-Pressed Cooking Oil (16 Litre Premium Tin)",
+                unitName: "Tin",
+                quantity: "2",
+                unitPrice: "9800.00",
+                taxPercent: "0",
+                total: "19600.00",
+              },
+              {
+                name: "Supreme Black Dust Leaf Tea (1kg Moisture-Proof Pouch)",
+                unitName: "Pouch",
+                quantity: "10",
+                unitPrice: "1450.00",
+                discount: "500.00",
+                taxPercent: "0",
+                total: "14000.00",
+              },
+            ],
+            calculation: {
+              base: "98200.00",
+              tax: "0.00",
+              documentDiscount: "1000.00",
+              total: "96200.00",
+            },
+            payment: {
+              total: "96200.00",
+              paid: "70000.00",
+              due: "26200.00",
+              cashApplied: "50000.00",
+              bankApplied: "20000.00",
+              cashTendered: "50000.00",
+              change: "0.00",
+              bankReference: "MCB-TRX-882201",
+              payments: [
+                { id: "p1", kind: "Cash", applied: "50000.00", reference: null },
+                { id: "p2", kind: "Bank", applied: "20000.00", reference: "MCB-TRX-882201" },
+              ],
+            },
+          }}
+          onClose={() => setPreviewModalOpen(false)}
+        />
+      )}
     </div>
   );
 }

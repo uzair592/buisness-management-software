@@ -1690,8 +1690,76 @@ main {
 .live-issue-queue ul { list-style:disc; padding-left:1.2rem; max-height:11rem; overflow:auto; }
 .live-issue-queue li { overflow-wrap:anywhere; font-size:.85rem; }
 .live-issue-queue label { max-width:20rem; }
-@media (max-width:1050px) { .live-billing-grid { grid-template-columns:1fr; } .live-billing-summary { position:static; } }
-@media (max-width:650px) { .live-billing-top { grid-template-columns:1fr; } .live-billing-line-fields { grid-template-columns:repeat(2,minmax(0,1fr)); } }
-@media print { body * { visibility:hidden !important; } .sale-print, .sale-print * { visibility:visible !important; }
-  .sale-print { position:absolute; left:0; top:0; width:100%; color:#000; } .sale-print .print-hide { display:none !important; }
-  .sale-print table { width:100%; border-collapse:collapse; } .sale-print td, .sale-print th { border-bottom:1px solid #999; padding:4px; } }
+@media (max-width:1050px) {
+  .live-billing-grid { grid-template-columns:1fr; }
+  .live-billing-summary { position:static; }
+}
+
+@media (max-width:650px) {
+  .live-billing-top { grid-template-columns:1fr; }
+  .live-billing-line-fields { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .live-billing-line-fields .input,
+  .live-billing-line-fields button,
+  .live-billing-top .input,
+  .live-billing-summary .input,
+  .live-billing-summary button {
+    min-height: 44px;
+    font-size: 15px;
+  }
+  .menu-toggle {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
+/* Scoped Print CSS */
+@media print {
+  body {
+    background: #fff !important;
+    color: #000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  body * {
+    visibility: hidden !important;
+  }
+  .app-shell, .app-header, .desktop-sidebar, .navigation-dialog,
+  .print-hide, .btn-primary, .btn-secondary, .btn-ghost, button,
+  .command-dialog, .table-toolbar, .live-pagination, nav, header, aside {
+    display: none !important;
+  }
+  .printable-document-container,
+  .printable-document-container * {
+    visibility: visible !important;
+  }
+  .printable-document-container {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+  tr, .print-avoid-break {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+  .sale-print, .sale-print *,
+  .purchase-print, .purchase-print * {
+    visibility: visible !important;
+  }
+  .sale-print, .purchase-print {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    color: #000;
+  }
+  .sale-print .print-hide,
+  .purchase-print .print-hide {
+    display: none !important;
+  }
+}
