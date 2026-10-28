@@ -241,7 +241,7 @@ export function ExpensesPage() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-border pb-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Business Expenses</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Expenses</h1>
           <p className="text-sm text-muted-foreground">
             Track daily operating shop expenses (Rent, Utilities, Salaries, Tea, Maintenance) and categorize payouts.
           </p>

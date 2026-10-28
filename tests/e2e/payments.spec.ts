@@ -144,7 +144,7 @@ test("owner records payment in with invoice allocation and tracks operating expe
 
   // 7. UI Test: Navigate to /expenses
   await page.goto("/expenses");
-  await expect(page.getByRole("heading", { name: "Business Expenses" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Expenses", exact: true })).toBeVisible();
 
   // First create a category via Categories tab
   await page.getByRole("button", { name: "Categories" }).click();
