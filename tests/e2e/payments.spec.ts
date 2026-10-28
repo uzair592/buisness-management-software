@@ -132,12 +132,13 @@ test("owner records payment in with invoice allocation and tracks operating expe
   await page.getByRole("button", { name: "Post Payment In" }).click();
 
   // Assert payment posted in list
-  await expect(page.getByText("PAY-IN-000001")).toBeVisible();
-  await expect(page.getByText("Payment In").first()).toBeVisible();
-  await expect(page.getByText("CHQ-5501")).toBeVisible();
+  const payCell = page.getByRole("cell", { name: "PAY-IN-000001" });
+  await expect(payCell).toBeVisible();
+  await expect(page.getByRole("cell", { name: "Payment In" }).first()).toBeVisible();
+  await expect(page.getByRole("cell", { name: "CHQ-5501" })).toBeVisible();
 
   // Open payment details modal
-  await page.getByText("PAY-IN-000001").click();
+  await payCell.click();
   await expect(page.getByText("Document Allocations")).toBeVisible();
   await expect(page.getByText(saleNumber)).toBeVisible();
   await page.getByRole("button", { name: "Close" }).click();
