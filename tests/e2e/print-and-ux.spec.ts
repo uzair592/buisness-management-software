@@ -4,7 +4,7 @@ import path from "node:path";
 
 test("invoice templates, reprint snapshot fidelity, and responsive UX across 1366, 1920 and 390 viewports", async ({
   page,
-}, testInfo) => {
+}, _testInfo) => {
   const suffix = crypto.randomUUID().slice(0, 8);
   const username = `ux_owner_${suffix}`;
   const password = "CorrectBatteryHorse123!";
@@ -54,7 +54,7 @@ test("invoice templates, reprint snapshot fidelity, and responsive UX across 136
     phone: "+92 300 9876543",
   });
   expect(partyRes.status()).toBe(201);
-  const partyId = (await partyRes.json()).id;
+  expect((await partyRes.json()).id).toBeDefined();
 
   const locRes = await page.request.get("/v1/locations");
   const locationId = (await locRes.json())[0].id;

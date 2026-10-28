@@ -19,6 +19,39 @@ import {
   PrintDocumentModal,
 } from "../templates";
 
+interface RestoreDifference {
+  active: number;
+  archive: number;
+  delta: number;
+}
+
+interface RestoreInspectionResult {
+  valid: boolean;
+  manifest: {
+    businessName: string;
+    datasetEpoch: number;
+    exportedAt: string;
+  };
+  activeBusiness: {
+    currentEpoch: number;
+  };
+  differences: Record<string, RestoreDifference>;
+}
+
+interface CsvValidationError {
+  row: number;
+  field: string;
+  message: string;
+}
+
+interface CsvDryRunResult {
+  totalRows: number;
+  validRows: number;
+  invalidRows: number;
+  errors: CsvValidationError[];
+  preview: unknown[];
+}
+
 export function SettingsPage() {
   const auth = useAuth();
   const [tab, setTab] = useState<"signin" | "register">("signin");
@@ -89,6 +122,205 @@ export function SettingsPage() {
     setPrintSettings(updated);
     setPrintSavedNotice(true);
     setTimeout(() => setPrintSavedNotice(false), 2000);
+  }
+
+  // Backup & Restore state
+  const [backupPassphrase, setBackupPassphrase] = useState("");
+  const [backupExporting, setBackupExporting] = useState(false);
+  const [backupStatus, setBackupStatus] = useState<string | null>(null);
+
+  const [restorePassphrase, setRestorePassphrase] = useState("");
+  const [restoreEnvelope, setRestoreEnvelope] = useState<unknown | null>(null);
+  const [restoreInspection, setRestoreInspection] = useState<RestoreInspectionResult | null>(null);
+  const [restoreError, setRestoreError] = useState<string | null>(null);
+  const [restoreLoading, setRestoreLoading] = useState(false);
+  const [restorePromoting, setRestorePromoting] = useState(false);
+  const [restoreSuccess, setRestoreSuccess] = useState<string | null>(null);
+
+  // CSV Import/Export state
+  const [csvTab, setCsvTab] = useState<"items" | "parties">("items");
+  const [csvText, setCsvText] = useState("");
+  const [csvDryRun, setCsvDryRun] = useState<CsvDryRunResult | null>(null);
+  const [csvError, setCsvError] = useState<string | null>(null);
+  const [csvLoading, setCsvLoading] = useState(false);
+  const [csvSuccess, setCsvSuccess] = useState<string | null>(null);
+
+  async function handleExportArchive() {
+    if (backupPassphrase.length < 8) {
+      setBackupStatus("Passphrase must be at least 8 characters");
+      return;
+    }
+    setBackupExporting(true);
+    setBackupStatus(null);
+    try {
+      const res = await fetch("/v1/backup/export", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-csrf-token": auth.csrfToken || "",
+        },
+        body: JSON.stringify({ passphrase: backupPassphrase }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Export failed");
+
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `bms-backup-${auth.selectedBusinessId}-${new Date().toISOString().slice(0, 10)}.bms.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setBackupPassphrase("");
+      setBackupStatus("Encrypted backup downloaded successfully. Store passphrase securely.");
+    } catch (err: unknown) {
+      setBackupStatus(err instanceof Error ? err.message : "Export failed");
+    } finally {
+      setBackupExporting(false);
+    }
+  }
+
+  async function handleLoadRestoreFile(file: File | undefined) {
+    setRestoreError(null);
+    setRestoreInspection(null);
+    setRestoreEnvelope(null);
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      if (parsed.format !== "bms-tenant-archive-v1") {
+        throw new Error("Invalid file format. Please select a .bms.json archive.");
+      }
+      setRestoreEnvelope(parsed);
+    } catch (err: unknown) {
+      setRestoreError(err instanceof Error ? err.message : "Could not read backup file");
+    }
+  }
+
+  async function handleInspectRestore() {
+    if (!restoreEnvelope) {
+      setRestoreError("Please upload a backup file first");
+      return;
+    }
+    if (restorePassphrase.length < 8) {
+      setRestoreError("Enter archive passphrase (min 8 characters)");
+      return;
+    }
+    setRestoreLoading(true);
+    setRestoreError(null);
+    try {
+      const res = await fetch("/v1/backup/inspect", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-csrf-token": auth.csrfToken || "",
+        },
+        body: JSON.stringify({
+          envelope: restoreEnvelope,
+          passphrase: restorePassphrase,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Inspection failed");
+      setRestoreInspection(data);
+    } catch (err: unknown) {
+      setRestoreError(err instanceof Error ? err.message : "Inspection failed");
+    } finally {
+      setRestoreLoading(false);
+    }
+  }
+
+  async function handlePromoteRestore() {
+    if (!restoreEnvelope || !restorePassphrase) return;
+    if (
+      !confirm(
+        "WARNING: Restoring this archive will advance the dataset epoch, revoke all active cashier sessions, and fence existing devices. Continue?",
+      )
+    ) {
+      return;
+    }
+    setRestorePromoting(true);
+    setRestoreError(null);
+    try {
+      const res = await fetch("/v1/backup/promote", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-csrf-token": auth.csrfToken || "",
+        },
+        body: JSON.stringify({
+          envelope: restoreEnvelope,
+          passphrase: restorePassphrase,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Promotion failed");
+      setRestoreSuccess(`Archive restored! Dataset epoch advanced to ${data.newDatasetEpoch}.`);
+      setRestoreInspection(null);
+      setRestoreEnvelope(null);
+      setRestorePassphrase("");
+    } catch (err: unknown) {
+      setRestoreError(err instanceof Error ? err.message : "Promotion failed");
+    } finally {
+      setRestorePromoting(false);
+    }
+  }
+
+  async function handleCsvDryRun() {
+    if (!csvText.trim()) {
+      setCsvError("Paste or upload CSV content first");
+      return;
+    }
+    setCsvLoading(true);
+    setCsvError(null);
+    setCsvDryRun(null);
+    setCsvSuccess(null);
+    try {
+      const res = await fetch(`/v1/import/${csvTab}/dry-run`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-csrf-token": auth.csrfToken || "",
+        },
+        body: JSON.stringify({ csvText }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Validation failed");
+      setCsvDryRun(data);
+    } catch (err: unknown) {
+      setCsvError(err instanceof Error ? err.message : "Validation failed");
+    } finally {
+      setCsvLoading(false);
+    }
+  }
+
+  async function handleCsvCommit() {
+    if (!csvDryRun || !csvDryRun.preview.length) return;
+    setCsvLoading(true);
+    setCsvError(null);
+    try {
+      const batchId = crypto.randomUUID();
+      const res = await fetch(`/v1/import/${csvTab}/commit`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-csrf-token": auth.csrfToken || "",
+        },
+        body: JSON.stringify({
+          batchId,
+          [csvTab]: csvDryRun.preview,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Commit failed");
+      setCsvSuccess(`Successfully imported ${data.count} ${csvTab}!`);
+      setCsvDryRun(null);
+      setCsvText("");
+    } catch (err: unknown) {
+      setCsvError(err instanceof Error ? err.message : "Commit failed");
+    } finally {
+      setCsvLoading(false);
+    }
   }
 
   const refreshPendingPartitions = useCallback(async () => {
@@ -950,6 +1182,294 @@ export function SettingsPage() {
             <p>Keep this file and its passphrase for authorised review. No commands were submitted.</p>
           </div>}
         </section>}
+      </div>
+
+      {/* Backup, Restore & Data Portability (M11) */}
+      <div className="bg-white p-6 rounded-lg border shadow-sm space-y-6">
+        <div>
+          <h2 className="text-base font-bold text-gray-900">Backup, Restore & Data Portability</h2>
+          <p className="text-xs text-gray-500 mt-1">
+            Export encrypted business archives, inspect restore diffs with epoch fencing, and import/export CSV catalogue records.
+          </p>
+        </div>
+
+        {/* Cloud Archive Export & Restore */}
+        <div className="p-4 bg-gray-50 rounded-lg border space-y-4">
+          <h3 className="text-sm font-bold text-gray-800">1. Encrypted Single-Business Archive</h3>
+          <p className="text-xs text-gray-600">
+            Export a complete, self-contained JSON archive protected with AES-256-GCM. Includes all catalogue items, parties, sales, purchases, payments, expenses, and double-entry journals.
+          </p>
+
+          {backupStatus && (
+            <p className="text-xs p-2 bg-blue-50 border border-blue-200 text-blue-800 rounded">
+              {backupStatus}
+            </p>
+          )}
+
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="flex-1 min-w-[200px]">
+              <label className="block text-xs text-gray-600 mb-1 font-semibold">
+                Backup Passphrase (min 8 chars)
+              </label>
+              <input
+                type="password"
+                value={backupPassphrase}
+                onChange={(e) => setBackupPassphrase(e.target.value)}
+                placeholder="Choose a strong passphrase"
+                className="w-full px-2.5 py-1.5 text-sm border rounded bg-white"
+              />
+            </div>
+            <Button
+              type="button"
+              disabled={backupExporting || backupPassphrase.length < 8}
+              onClick={() => void handleExportArchive()}
+              className="btn-primary text-xs"
+            >
+              {backupExporting ? "Exporting..." : "Download Encrypted Backup (.bms.json)"}
+            </Button>
+          </div>
+
+          <div className="pt-4 border-t border-gray-200 space-y-3">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-gray-700">
+              Inspect & Restore Backup Archive
+            </h4>
+            <p className="text-xs text-gray-500">
+              Inspecting an archive verifies integrity checksums and compares record counts against current business activity without modifying data.
+            </p>
+
+            {restoreError && (
+              <p className="text-xs p-2 bg-red-50 border border-red-200 text-red-700 rounded">
+                {restoreError}
+              </p>
+            )}
+            {restoreSuccess && (
+              <p className="text-xs p-2 bg-green-50 border border-green-200 text-green-800 rounded">
+                {restoreSuccess}
+              </p>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-gray-600 mb-1">
+                  Upload Backup (.bms.json)
+                </label>
+                <input
+                  type="file"
+                  accept=".json,.bms.json,application/json"
+                  onChange={(e) => void handleLoadRestoreFile(e.target.files?.[0])}
+                  className="w-full text-xs text-gray-600 file:mr-2 file:py-1 file:px-2 file:rounded file:border file:text-xs file:bg-white"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-600 mb-1">
+                  Archive Passphrase
+                </label>
+                <input
+                  type="password"
+                  value={restorePassphrase}
+                  onChange={(e) => setRestorePassphrase(e.target.value)}
+                  placeholder="Enter archive passphrase"
+                  className="w-full px-2.5 py-1.5 text-sm border rounded bg-white"
+                />
+              </div>
+            </div>
+
+            <Button
+              type="button"
+              disabled={restoreLoading || !restoreEnvelope || restorePassphrase.length < 8}
+              onClick={() => void handleInspectRestore()}
+              className="btn-secondary text-xs"
+            >
+              {restoreLoading ? "Inspecting..." : "Inspect Archive Differences"}
+            </Button>
+
+            {restoreInspection && (
+              <div className="mt-4 p-3 bg-white rounded border border-gray-300 space-y-3">
+                <div className="flex justify-between items-center text-xs">
+                  <span className="font-bold text-gray-900">
+                    Archive: {restoreInspection.manifest.businessName} (Epoch {restoreInspection.manifest.datasetEpoch})
+                  </span>
+                  <span className="text-gray-500">
+                    Exported: {new Date(restoreInspection.manifest.exportedAt).toLocaleDateString()}
+                  </span>
+                </div>
+
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-gray-100 text-gray-600 border-b">
+                    <tr>
+                      <th className="p-1.5">Record Type</th>
+                      <th className="p-1.5 text-right">Active Business</th>
+                      <th className="p-1.5 text-right">In Archive</th>
+                      <th className="p-1.5 text-right">Net Difference</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y text-[11px]">
+                    {Object.entries(restoreInspection.differences).map(([k, d]: [string, RestoreDifference]) => (
+                      <tr key={k}>
+                        <td className="p-1.5 font-medium capitalize">{k}</td>
+                        <td className="p-1.5 text-right">{d.active}</td>
+                        <td className="p-1.5 text-right">{d.archive}</td>
+                        <td className={`p-1.5 text-right font-bold ${d.delta > 0 ? "text-green-700" : d.delta < 0 ? "text-red-700" : "text-gray-500"}`}>
+                          {d.delta > 0 ? `+${d.delta}` : d.delta}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+
+                <div className="p-2.5 bg-amber-50 border border-amber-200 rounded text-xs text-amber-900 space-y-1">
+                  <p className="font-bold">⚠️ Promotion & Epoch Fencing Policy:</p>
+                  <p>
+                    Promoting this backup advances the active dataset epoch from {restoreInspection.activeBusiness.currentEpoch} to {restoreInspection.activeBusiness.currentEpoch + 1}. All existing cashier sessions and enrolled devices will be revoked immediately. Older devices attempting to sync will be fenced out to prevent duplicate billing replay.
+                  </p>
+                </div>
+
+                {isOwner && (
+                  <Button
+                    type="button"
+                    disabled={restorePromoting}
+                    onClick={() => void handlePromoteRestore()}
+                    className="btn-primary text-xs bg-red-600 hover:bg-red-700 text-white font-bold"
+                  >
+                    {restorePromoting ? "Promoting..." : "Confirm & Restore (Advance Epoch)"}
+                  </Button>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* CSV Import & Export */}
+        <div className="p-4 bg-gray-50 rounded-lg border space-y-4">
+          <div className="flex flex-wrap justify-between items-center gap-2">
+            <div>
+              <h3 className="text-sm font-bold text-gray-800">2. CSV Data Portability</h3>
+              <p className="text-xs text-gray-600">
+                Formula-safe CSV import and export for catalogue items and parties.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <a
+                href="/v1/export/items.csv"
+                download="items-export.csv"
+                className="btn-secondary text-xs py-1 px-2.5"
+              >
+                Export Items CSV
+              </a>
+              <a
+                href="/v1/export/parties.csv"
+                download="parties-export.csv"
+                className="btn-secondary text-xs py-1 px-2.5"
+              >
+                Export Parties CSV
+              </a>
+            </div>
+          </div>
+
+          <div className="flex border-b border-gray-300">
+            <button
+              type="button"
+              className={`py-1.5 px-3 text-xs font-semibold border-b-2 ${
+                csvTab === "items" ? "border-blue-600 text-blue-600" : "border-transparent text-gray-500"
+              }`}
+              onClick={() => { setCsvTab("items"); setCsvDryRun(null); setCsvError(null); }}
+            >
+              Import Items (Goods)
+            </button>
+            <button
+              type="button"
+              className={`py-1.5 px-3 text-xs font-semibold border-b-2 ${
+                csvTab === "parties" ? "border-blue-600 text-blue-600" : "border-transparent text-gray-500"
+              }`}
+              onClick={() => { setCsvTab("parties"); setCsvDryRun(null); setCsvError(null); }}
+            >
+              Import Customers / Suppliers
+            </button>
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex justify-between items-center text-xs text-gray-600">
+              <label htmlFor="csv-content-input" className="font-semibold">
+                Paste CSV or type content (Required headers: {csvTab === "items" ? "Name,Price,SKU,Barcode" : "Name,Phone,Email,Type"})
+              </label>
+              <button
+                type="button"
+                className="text-blue-600 underline text-[11px]"
+                onClick={() =>
+                  setCsvText(
+                    csvTab === "items"
+                      ? "Name,Price,SKU,Barcode\nBasmati Rice 25kg,3800.00,RICE-25K,8901234\nCooking Oil 5L,2400.00,OIL-5L,8905678"
+                      : "Name,Phone,Email,Type\nAl-Madina Traders,+92 300 1122334,contact@almadina.pk,Customer\nSuper Flour Mills,+92 321 4455667,info@superflour.pk,Supplier",
+                  )
+                }
+              >
+                Load Sample CSV
+              </button>
+            </div>
+            <textarea
+              id="csv-content-input"
+              rows={4}
+              value={csvText}
+              onChange={(e) => setCsvText(e.target.value)}
+              placeholder="Name,Price,..."
+              className="w-full px-2.5 py-1.5 text-xs font-mono border rounded bg-white"
+            />
+          </div>
+
+          {csvError && (
+            <p className="text-xs p-2 bg-red-50 border border-red-200 text-red-700 rounded">
+              {csvError}
+            </p>
+          )}
+          {csvSuccess && (
+            <p className="text-xs p-2 bg-green-50 border border-green-200 text-green-800 rounded">
+              {csvSuccess}
+            </p>
+          )}
+
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              disabled={csvLoading || !csvText.trim()}
+              onClick={() => void handleCsvDryRun()}
+              className="btn-secondary text-xs"
+            >
+              {csvLoading ? "Validating..." : "Dry Run Validate"}
+            </Button>
+            {csvDryRun && csvDryRun.validRows > 0 && (
+              <Button
+                type="button"
+                disabled={csvLoading}
+                onClick={() => void handleCsvCommit()}
+                className="btn-primary text-xs"
+              >
+                Commit {csvDryRun.validRows} Records
+              </Button>
+            )}
+          </div>
+
+          {csvDryRun && (
+            <div className="p-3 bg-white rounded border text-xs space-y-2">
+              <div className="flex gap-4 font-semibold">
+                <span className="text-gray-700">Total: {csvDryRun.totalRows}</span>
+                <span className="text-green-700">Valid: {csvDryRun.validRows}</span>
+                <span className="text-red-700">Errors: {csvDryRun.invalidRows}</span>
+              </div>
+              {csvDryRun.errors.length > 0 && (
+                <div className="p-2 bg-red-50 border border-red-200 rounded space-y-1 text-red-800 text-[11px]">
+                  <p className="font-bold">Validation Errors:</p>
+                  <ul className="list-disc pl-4 space-y-0.5">
+                    {csvDryRun.errors.map((err: CsvValidationError, idx: number) => (
+                      <li key={idx}>
+                        Row {err.row} ({err.field}): {err.message}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Change Password */}

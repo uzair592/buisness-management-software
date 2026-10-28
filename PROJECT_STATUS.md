@@ -16,7 +16,7 @@ Last planning update: 2026-10-20.
 | M08 Returns and inventory lifecycle | Complete on `milestone-08-returns-and-stock` | Customer credit notes (CN), supplier debit notes (DN), refunds, stock count variances, approved physical damage/loss write-offs, and deterministic deficit cost reconciliation ([M08 evidence](docs/evidence/m08/README.md)) |
 | M09 Reports and reconciliation | Complete on `milestone-09-reports-and-reconciliation` | Authoritative double-entry Profit & Loss, Balance Sheet, Trial Balance, Stock Valuation, Party running ledgers, and Cash Register Session reconciliation ([M09 evidence](docs/evidence/m09/README.md)) |
 | M10 UX, printing and installation | Complete on `milestone-10-ux-and-invoice-templates` | Viewport audits (1366, 1920, 390 mobile); A4, 80mm POS, and 58mm compact templates; snapshot reprint fidelity; logo & tax configuration; scoped print CSS; live connection status indicator ([M10 evidence](docs/evidence/m10/README.md)) |
-| M11 Backup, import and operations | Not started | — |
+| M11 Backup, import and operations | Complete on `milestone-11-backup-import-and-operations` | Single-business encrypted `AES-256-GCM` archives, dataset epoch fencing on restore promotion, session/device invalidation, formula-safe CSV import/export with dry run, and operational runbooks ([M11 evidence](docs/evidence/m11/README.md)) |
 | M12 Quotes and warehouse workflows | Not started | — |
 | M13 Pilot and release | Not started | — |
 | M14 Optional commercial platform | Deferred | Requires product decision |
@@ -384,6 +384,30 @@ PR #7 [restored the M03 foundation onto main](https://github.com/uzair592/buisne
   - `pnpm check`: Passed (0 ESLint errors/warnings, strict TypeScript check across contracts/db/domain/ui/api/web, API/Web production builds, 29 domain unit tests passing).
   - `pnpm test:db`: Passed all 15 real PostgreSQL integration test suites (15/15) under `bms_runtime` role and RLS.
   - `pnpm test:e2e`: Passed all 25 Playwright browser E2E test suites (25/25) including dedicated `tests/e2e/print-and-ux.spec.ts` with 6 generated evidence screenshots in `docs/evidence/m10/`.
+
+## Milestone 11: Tenant backup archives, epoch fencing, CSV portability & production operations (`milestone-11-backup-import-and-operations`)
+
+- **Owner-Authorized Encrypted Backup Archives (`AES-256-GCM`)**:
+  - Single-business complete export (`exportBusinessArchive`) enveloping locations, accounts, catalogue items, units, conversions, parties, journal entries, stock movements, sales, purchases, payments, expenses, returns, adjustments, cash sessions, and command receipts.
+  - Key derivation using `PBKDF2-HMAC-SHA256` (100,000 iterations, 32-byte salt).
+  - Control totals computed: total debits, total credits, stock valuation, and per-entity record counts.
+  - SHA-256 payload integrity checksum embedded in manifest.
+- **Safe Restore & Dataset Epoch Fencing (`POST /v1/backup/inspect` & `/promote`)**:
+  - Non-destructive inspection preview comparing archive record counts with current business counts without modifying database state. Rejects archives with incorrect passphrases or cross-tenant business IDs (403 Forbidden).
+  - Atomic promotion: increments `datasetEpoch` on `Business` and `SyncHead`.
+  - Immediate device & session revocation: enrolled devices set to `Revoked` and active browser sessions for the business deleted.
+  - Epoch gate enforcement: stale client commands rejected by sync-head lock (`Dataset epoch mismatch`).
+- **Formula-Safe CSV Portability (`POST /v1/import/...` & `GET /v1/export/...`)**:
+  - Sanitizes fields starting with `=, +, -, @, \t, \r` by prepending a single quote (`'`) on export, mitigating Excel/Calc DDE macro injection vulnerabilities.
+  - Dry-run validation returning row-level errors (missing required fields, negative prices, duplicate names or SKUs) prior to database insertion.
+  - Idempotent batch commit with audit event tracking: repeated submissions with the same `batchId` return existing count without duplicate insertion.
+- **Production Operations Runbooks**:
+  - `docs/runbooks/deployment-and-operations.md`: Topology, configuration schema, zero-downtime locked migration deploy process, health probes, connection pool sizing, and backup cadence.
+  - `docs/runbooks/incident-and-recovery.md`: RPO $\le 24$h / RTO $\le 4$h targets, lost device immediate revocation, corrupted database point-in-time recovery with dataset epoch fence advance, and formula injection incident handling.
+- **Validation**:
+  - `pnpm check`: Passed (0 ESLint errors/warnings, strict TypeScript check across contracts/db/domain/ui/api/web, API/Web production builds, 29 domain unit tests passing).
+  - `pnpm test:db`: Passed all 16 real PostgreSQL integration test suites (16/16) under `bms_runtime` role and RLS (`tests/backup-restore-db.test.ts`).
+  - `pnpm test:e2e`: Passed all 26 Playwright browser E2E test suites (26/26) including dedicated `tests/e2e/backup-and-import.spec.ts` with 3 generated evidence screenshots in `docs/evidence/m11/`.
 
 ## M00 validation
 
