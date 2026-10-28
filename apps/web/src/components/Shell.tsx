@@ -9,8 +9,10 @@ const navigation = [
   { path: "/home", label: "Home", icon: HomeIcon },
   { path: "/sales", label: "Sales", icon: SalesIcon },
   { path: "/purchases", label: "Purchases", icon: PurchasesIcon },
+  { path: "/returns", label: "Returns", icon: ReturnsIcon },
   { path: "/parties", label: "Parties", icon: PartiesIcon },
   { path: "/items", label: "Items & Stock", icon: ItemsIcon },
+  { path: "/stock/adjustments", label: "Stock Adjustments", icon: AdjustmentsIcon },
   { path: "/cash-bank", label: "Cash & Bank", icon: CashIcon },
   { path: "/expenses", label: "Expenses", icon: ExpensesIcon },
   { path: "/reports", label: "Reports", icon: ReportsIcon },
@@ -196,6 +198,44 @@ function PurchasesIcon({ className }: { className?: string }) {
         strokeLinejoin="round"
         strokeWidth={2}
         d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"
+      />
+    </svg>
+  );
+}
+
+function ReturnsIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M3 10h10a5 5 0 015 5v2m0 0l-4-4m4 4l4-4M3 10l4-4M3 10l4 4"
+      />
+    </svg>
+  );
+}
+
+function AdjustmentsIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"
       />
     </svg>
   );

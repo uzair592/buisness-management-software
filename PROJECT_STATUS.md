@@ -13,13 +13,46 @@ Last planning update: 2026-10-20.
 | M05 First sale | PR #12 merged; broader accounting gate remains open | Online billing and atomic journal/stock/payment path; [CI on the opening-form race repair](https://github.com/uzair592/buisness-management-software/actions/runs/39158053639) passed its checks. |
 | M06 Online web cutover | PR #15 and #16 merged; deployment gate open | New offline issue and intake removed; old browser-issued work kept for encrypted recovery. [PR #16 CI](https://github.com/uzair592/buisness-management-software/actions/runs/39479468804) passed PostgreSQL, runtime and 19 browser cases. Real legacy issued-work inventory/reconciliation is still required before deployment. |
 | M07 Purchases and money | In progress; Increment 1 merged in PR #17, Increment 2 ready on `milestone-07-purchases-and-bills` | Online money transfer (PR #17); Purchase bills with supplier ref, stock receipt, moving average valuation, balanced journals and duplicate ref prevention ([M07 evidence](docs/evidence/m07/README.md)) |
-| M08 Returns and inventory lifecycle | Not started | — |
+| M08 Returns and inventory lifecycle | Complete on `milestone-08-returns-and-stock` | Customer credit notes (CN), supplier debit notes (DN), refunds, stock count variances, approved physical damage/loss write-offs, and deterministic deficit cost reconciliation ([M08 evidence](docs/evidence/m08/README.md)) |
 | M09 Reports and reconciliation | Not started | — |
 | M10 UX, printing and installation | Not started | — |
 | M11 Backup, import and operations | Not started | — |
 | M12 Quotes and warehouse workflows | Not started | — |
 | M13 Pilot and release | Not started | — |
 | M14 Optional commercial platform | Deferred | Requires product decision |
+
+## Milestone 08: Returns, credit notes, stock adjustments and resolved valuation (`milestone-08-returns-and-stock`)
+
+- **Additive PostgreSQL Migration (`20261022000000_m08_returns_and_stock`)**:
+  - Adds sequential counters `credit_note_sequence`, `debit_note_sequence`, and `stock_adjustment_sequence` to `businesses`.
+  - Creates tables `credit_notes`, `credit_note_lines`, `credit_note_refunds`, and `stock_adjustments` with composite tenant foreign keys `(business_id, id)`.
+  - Preserves immutable financial history with check constraints (`credit_note_posted_complete`, `credit_note_refund_kind`, `stock_adjustment_posted`).
+  - Enables and forces PostgreSQL Row Level Security (RLS) on all 4 new tables with `tenant_scope` policies and permissions granted to the restricted `bms_runtime` role.
+- **Domain Arithmetic & Invariants (`@business/domain`)**:
+  - `validateReturnQuantity`: enforces non-negative bounds and strict remaining line quantity limits to prevent over-returning.
+  - `calculateStockVariance`: calculates counted vs system quantity differences and valuation impact.
+  - `allocateDeficitSettlement`: deterministically matches inward receipts to historical negative stock deficit events and generates COGS adjustment values.
+- **Backend Domain Engines & Fastify Routes (`apps/api`)**:
+  - `returns.ts`:
+    - Customer Returns (Credit Notes `CN-xxxxxx`): restores sellable inventory at original unit cost when marked `Restocked`, skips inventory for `Damaged/Scrapped`, debits sales return contra-revenue and reverses output tax, credits customer receivable (reducing due), issues customer account credit, or records cash/bank refund.
+    - Supplier Returns (Debit Notes `DN-xxxxxx`): reduces open accounts payable, reverses input tax and inventory, and moves stock outward.
+    - T14/T15 concurrency protection: validates original line remaining balances and rejects concurrent or excess returns with HTTP 409 `ReturnConflict`.
+  - `stock-adjustments.ts`:
+    - Stock counts and approved variances (`Damage`, `Loss`, `Surplus`, `CountVariance`, `Correction`): debits loss expense and credits inventory asset (for shortages) or vice versa (for surpluses). Services reject stock adjustments.
+  - `deficit-settlement.ts`:
+    - Reconciles historical provisional negative stock deficit costs deterministically upon inward receipts, generating balancing COGS adjustments.
+  - Routes registered:
+    - `GET /v1/returns`, `POST /v1/returns/sales/drafts`, `POST /v1/returns/sales/:id/post`
+    - `POST /v1/returns/purchases/drafts`, `POST /v1/returns/purchases/:id/post`
+    - `GET /v1/stock/adjustments`, `POST /v1/stock/adjustments/drafts`, `POST /v1/stock/adjustments/:id/post`, `GET /v1/stock/deficits`
+- **Frontend UI (`apps/web`)**:
+  - `ReturnsPage.tsx`: Return history table, new return note creation, document lookup, line-level return quantity and disposition selector (`Restocked` vs `Damaged`), settlement allocator (unpaid due / customer credit / refund).
+  - `StockAdjustmentsPage.tsx`: Stock adjustment history table, count adjustment form (location, item, kind, delta/counted, unit cost, reason), and provisional deficits inspection tab.
+  - Shell and routing integration: `/returns` and `/stock/adjustments` wired into `App.tsx` and `Shell.tsx` with dedicated navigation icons.
+- **Verification**:
+  - `pnpm check`: 0 lint errors/warnings, strict TypeScript check across all workspace projects, production builds for API and Web, 29 unit tests passing.
+  - `pnpm test:db`: All 12 PostgreSQL integration test suites passed (12/12) under real database constraints and RLS.
+  - `pnpm exec playwright test tests/e2e/returns.spec.ts`: Passed E2E test verifying sale return, credit note posting, stock restitution, and stock count damage adjustment.
 
 ## Architecture modularization, route separation & online UX polish (`refactor/modular-architecture-and-ux-polish`)
 

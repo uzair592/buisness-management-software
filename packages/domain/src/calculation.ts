@@ -186,3 +186,102 @@ export function allocatePayment(input: {
     receivable: render(total - cash - bank - credit, 2),
   };
 }
+
+export function validateReturnQuantity(
+  originalQuantityBase: string,
+  priorReturnedQuantityBase: string,
+  requestedReturnQuantityBase: string,
+): { remainingQuantityBase: string } {
+  const orig = decimal(originalQuantityBase, 6);
+  const prior = decimal(priorReturnedQuantityBase, 6);
+  const req = decimal(requestedReturnQuantityBase, 6);
+  if (req <= 0n) throw new Error("Return quantity must be greater than zero");
+  if (prior + req > orig) {
+    throw new Error(
+      `Return quantity exceeds remaining limit (original: ${originalQuantityBase}, returned: ${priorReturnedQuantityBase})`,
+    );
+  }
+  return { remainingQuantityBase: render(orig - prior - req, 6) };
+}
+
+export function calculateStockVariance(
+  countedQuantity: string,
+  systemQuantity: string,
+  unitCost: string,
+): {
+  quantityDelta: string;
+  valueDelta: string;
+  kind: "Surplus" | "Shortage" | "NoChange";
+} {
+  const counted = decimal(countedQuantity, 6);
+  const system = decimal(systemQuantity, 6);
+  const cost = decimal(unitCost, 2);
+  const deltaQty = counted - system;
+  const deltaAbs = deltaQty < 0n ? -deltaQty : deltaQty;
+  const deltaValue = halfUp(deltaAbs * cost, QUANTITY);
+  const signedValue = deltaQty < 0n ? -deltaValue : deltaValue;
+  return {
+    quantityDelta: render(deltaQty, 6),
+    valueDelta: render(signedValue, 2),
+    kind: deltaQty > 0n ? "Surplus" : deltaQty < 0n ? "Shortage" : "NoChange",
+  };
+}
+
+export interface OpenDeficit {
+  id: string;
+  openQuantityBase: string;
+  provisionalCost: string;
+}
+
+export interface SettledDeficit {
+  id: string;
+  settledQuantityBase: string;
+  remainingOpenQuantityBase: string;
+  provisionalCost: string;
+  actualCost: string;
+  unitDifference: string;
+  valueAdjustment: string;
+}
+
+export function allocateDeficitSettlement(
+  openDeficits: readonly OpenDeficit[],
+  receiptQuantityBase: string,
+  receiptUnitCost: string,
+): {
+  settlements: SettledDeficit[];
+  remainingReceiptQuantityBase: string;
+} {
+  let remainingReceipt = decimal(receiptQuantityBase, 6);
+  const actualCost = decimal(receiptUnitCost, 2);
+  const settlements: SettledDeficit[] = [];
+
+  for (const deficit of openDeficits) {
+    if (remainingReceipt <= 0n) break;
+    const openQty = decimal(deficit.openQuantityBase, 6);
+    if (openQty <= 0n) continue;
+    const settledQty = remainingReceipt >= openQty ? openQty : remainingReceipt;
+    remainingReceipt -= settledQty;
+    const remainingOpen = openQty - settledQty;
+    const provCost = decimal(deficit.provisionalCost, 2);
+    const unitDiff = actualCost - provCost;
+    const diffAbs = unitDiff < 0n ? -unitDiff : unitDiff;
+    const valueAdjAbs = halfUp(settledQty * diffAbs, QUANTITY);
+    const valueAdj = unitDiff < 0n ? -valueAdjAbs : valueAdjAbs;
+
+    settlements.push({
+      id: deficit.id,
+      settledQuantityBase: render(settledQty, 6),
+      remainingOpenQuantityBase: render(remainingOpen, 6),
+      provisionalCost: deficit.provisionalCost,
+      actualCost: receiptUnitCost,
+      unitDifference: render(unitDiff, 2),
+      valueAdjustment: render(valueAdj, 2),
+    });
+  }
+
+  return {
+    settlements,
+    remainingReceiptQuantityBase: render(remainingReceipt, 6),
+  };
+}
+

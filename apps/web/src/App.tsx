@@ -5,6 +5,8 @@ import { SalesPage } from "./pages/SalesPage";
 import { NewSalePage } from "./pages/NewSalePage";
 import { PurchasesPage } from "./pages/PurchasesPage";
 import { NewPurchasePage } from "./pages/NewPurchasePage";
+import { ReturnsPage } from "./pages/ReturnsPage";
+import { StockAdjustmentsPage } from "./pages/StockAdjustmentsPage";
 import { PlannedPage } from "./pages/PlannedPage";
 import { PreviewProvider } from "./preview/PreviewProvider";
 import { DirectoryPage } from "./pages/DirectoryPage";
@@ -29,6 +31,8 @@ export default function App() {
             <Route path="/sales/new" element={<NewSalePage />} />
             <Route path="/purchases" element={<PurchasesPage />} />
             <Route path="/purchases/new" element={<NewPurchasePage />} />
+            <Route path="/returns" element={<ReturnsPage />} />
+            <Route path="/stock/adjustments" element={<StockAdjustmentsPage />} />
             <Route
               path="/parties"
               element={<DirectoryPage key="parties" type="parties" />}

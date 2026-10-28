@@ -9,6 +9,8 @@ import { registerPurchaseRoutes } from "./purchases.js";
 import { registerCatalogueRoutes } from "./catalogue.js";
 import { registerAccountRoutes } from "./accounts.js";
 import { registerOpeningRoutes } from "./opening.js";
+import { returnsRoutes } from "./returns.js";
+import { stockRoutes } from "./stock.js";
 
 export * from "./context.js";
 
@@ -22,4 +24,6 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps) {
   registerCatalogueRoutes(app, deps);
   registerAccountRoutes(app, deps);
   registerOpeningRoutes(app, deps);
+  returnsRoutes(app, deps);
+  stockRoutes(app, deps);
 }
