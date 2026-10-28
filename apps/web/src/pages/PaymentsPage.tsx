@@ -299,7 +299,7 @@ export function PaymentsPage() {
             Record customer payment receipts (Payment In), supplier payouts (Payment Out), and invoice allocations.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             className={activeTab === "list" ? "btn-primary" : "btn-secondary"}
             onClick={() => {
@@ -344,8 +344,8 @@ export function PaymentsPage() {
       {/* List Tab */}
       {activeTab === "list" && (
         <Panel className="space-y-4">
-          <div className="flex justify-between items-center gap-4">
-            <div className="flex items-center gap-2">
+          <div className="flex flex-wrap justify-between items-center gap-4">
+            <div className="flex flex-wrap items-center gap-2">
               <span className="text-sm font-medium text-muted-foreground">Filter:</span>
               <button
                 type="button"
