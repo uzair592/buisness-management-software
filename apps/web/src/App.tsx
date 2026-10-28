@@ -3,9 +3,10 @@ import { Shell } from "./components/Shell";
 import { HomePage } from "./pages/HomePage";
 import { SalesPage } from "./pages/SalesPage";
 import { NewSalePage } from "./pages/NewSalePage";
+import { PurchasesPage } from "./pages/PurchasesPage";
+import { NewPurchasePage } from "./pages/NewPurchasePage";
 import { PlannedPage } from "./pages/PlannedPage";
 import { PreviewProvider } from "./preview/PreviewProvider";
-import { RecordsPage } from "./pages/RecordsPage";
 import { DirectoryPage } from "./pages/DirectoryPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { AccountSetupPage } from "./pages/AccountSetupPage";
@@ -26,10 +27,8 @@ export default function App() {
             <Route path="/home" element={<HomePage />} />
             <Route path="/sales" element={<SalesPage />} />
             <Route path="/sales/new" element={<NewSalePage />} />
-            <Route
-              path="/purchases"
-              element={<RecordsPage title="Purchases" kind="Purchase" />}
-            />
+            <Route path="/purchases" element={<PurchasesPage />} />
+            <Route path="/purchases/new" element={<NewPurchasePage />} />
             <Route
               path="/parties"
               element={<DirectoryPage key="parties" type="parties" />}
